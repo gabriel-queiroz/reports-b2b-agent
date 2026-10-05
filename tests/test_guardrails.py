@@ -117,7 +117,7 @@ def test_tags_do_prompt_sao_neutralizadas(tag):
 
 
 def test_caracteres_de_controle_e_invisiveis_saem():
-    ataque = "recargas\\x00 de​ julho‮\\x07"
+    ataque = "recargas\x00 de​ julho‮\x07"
     limpo = sanitize_question(ataque)
     assert limpo == "recargas de julho"
 
