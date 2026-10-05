@@ -1,0 +1,229 @@
+<exemplo>
+    <pergunta_exemplo>Histórico de recargas distribuídas no nível empresa, uma linha por recarga e benefício, com empresa, benefício (saldo), método de pagamento, uso de saldo, data de distribuição, valor total, contexto e agendamento.</pergunta_exemplo>
+    <sql>
+SELECT
+  br.company_group.id AS company_group_id,
+  br.order_id,
+  CAST(CONCAT('ID_', split(br.order_id, '-')[3]) AS STRING) AS short_id_recarga,
+  br.company_group.cnpj AS cnpj_empresa,
+  br.company.name AS nome_empresa,
+  br.product_key AS saldo_ifood,
+  br.order_info.payment_method AS metodo_pagamento,
+  br.order_info.balance_usage AS uso_saldo_pagamento,
+  DATE(br.order_info.distributed) AS data_recarga,
+  SUM(br.amount) AS valor_recarga,
+  br.order_info.custom_description AS contexto_recarga,
+  br.order_info.distribute_on AS metodo_agendamento
+FROM main.fintech_finance.ifood_benefits_recharges br
+WHERE br.company_group.id = '550e8400-e29b-41d4-a716-446655440000'
+  AND br.order_status = 'DISTRIBUTION_COMPLETE'
+  AND br.order_item_status = 'DISTRIBUTION_COMPLETE'
+GROUP BY
+  br.company_group.id,
+  br.order_id,
+  CAST(CONCAT('ID_', split(br.order_id, '-')[3]) AS STRING),
+  br.company_group.cnpj,
+  br.company.name,
+  br.product_key,
+  br.order_info.payment_method,
+  br.order_info.balance_usage,
+  DATE(br.order_info.distributed),
+  br.order_info.custom_description,
+  br.order_info.distribute_on
+ORDER BY data_recarga ASC
+    </sql>
+</exemplo>
+
+<exemplo>
+    <pergunta_exemplo>Histórico de recargas por colaborador, uma linha por item distribuído, com nome, CPF, benefício (saldo) e valor de cada item.</pergunta_exemplo>
+    <sql>
+SELECT
+  br.company_group.id AS company_group_id,
+  br.order_item_id,
+  br.order_id,
+  br.person_id,
+  br.company.cnpj AS cnpj_empresa,
+  br.company.name AS nome_empresa,
+  CAST(CONCAT('ID_', split(br.order_id, '-')[3]) AS STRING) AS id_recarga,
+  DATE(br.order_info.distributed) AS data_recarga,
+  br.product_key AS saldo_ifood,
+  br.amount AS valor_recarga,
+  e.name AS nome_colaborador,
+  e.cpf AS cpf_colaborador
+FROM main.fintech_finance.ifood_benefits_recharges br
+LEFT JOIN main.ifoodoffice_management_silver.employee e
+  ON e.id = br.employee_id
+WHERE br.company_group.id = '550e8400-e29b-41d4-a716-446655440000'
+  AND br.person_id = '550e8400-e29b-41d4-a716-446655440000'
+  AND br.order_status = 'DISTRIBUTION_COMPLETE'
+  AND br.order_item_status = 'DISTRIBUTION_COMPLETE'
+ORDER BY data_recarga DESC
+    </sql>
+</exemplo>
+
+<exemplo>
+    <pergunta_exemplo>Histórico de estornos no nível empresa, com CNPJ, nome, status, valores solicitado e estornado, total de colaboradores, email do solicitante e benefício estornado.</pergunta_exemplo>
+    <sql>
+SELECT
+  cc.group_id AS company_group_id,
+  cc.id AS chargeback_id,
+  CAST(CONCAT('ID_', split(cc.id, '-')[3]) AS STRING) AS id_estorno,
+  cc.company_id,
+  c.cnpj AS cnpj_empresa,
+  c.social_name AS nome_empresa,
+  cc.chargeback_status AS status_estorno,
+  cc.total_amount_requested AS valor_total_solicitado,
+  cc.total_amount_recharged AS valor_total_estornado,
+  cc.total_chargeback_employees AS total_colaboradores,
+  cc.login AS email_solicitante,
+  DATE(cc.updated_at) AS data_estorno,
+  ce.provider AS saldo_ifood_estornado
+FROM main.ifoodoffice_recharge_chargeback.chargeback cc
+INNER JOIN main.ifoodoffice_recharge_chargeback.chargeback_employee ce
+  ON cc.id = ce.chargeback_id
+INNER JOIN fintech_companies.companies c
+  ON cc.company_id = c.company_id
+WHERE cc.group_id = '550e8400-e29b-41d4-a716-446655440000'
+  AND cc.chargeback_status = 'CONCLUDED'
+  AND c.deleted = false
+  AND c.test = false
+ORDER BY data_estorno DESC
+    </sql>
+</exemplo>
+
+<exemplo>
+    <pergunta_exemplo>Histórico de estornos por colaborador, com nome, CPF, motivo, status do estorno e do colaborador, e valores solicitado e estornado.</pergunta_exemplo>
+    <sql>
+SELECT
+  cc.group_id AS company_group_id,
+  ce.id AS chargeback_employee_id,
+  CAST(CONCAT('ID_', split(ce.id, '-')[3]) AS STRING) AS id_estorno_colab,
+  cc.id AS chargeback_id,
+  CAST(CONCAT('ID_', split(cc.id, '-')[3]) AS STRING) AS id_estorno_empresa,
+  cc.company_id,
+  c.cnpj AS cnpj_empresa,
+  c.social_name AS nome_empresa,
+  cc.chargeback_status AS status_estorno_empresa,
+  ce.chargeback_employee_status AS status_estorno_colaborador,
+  ce.total_requested_value AS valor_solicitado,
+  ce.total_recharged_value AS valor_estornado,
+  cc.login AS email_solicitante,
+  DATE(cc.updated_at) AS data_estorno,
+  ce.reason AS motivo_estorno,
+  ce.tax_id AS cpf_colaborador,
+  ce.employee_name AS nome_colaborador
+FROM main.ifoodoffice_recharge_chargeback.chargeback cc
+INNER JOIN main.ifoodoffice_recharge_chargeback.chargeback_employee ce
+  ON cc.id = ce.chargeback_id
+INNER JOIN fintech_companies.companies c
+  ON cc.company_id = c.company_id
+WHERE cc.group_id = '550e8400-e29b-41d4-a716-446655440000'
+  AND cc.chargeback_status = 'CONCLUDED'
+  AND ce.chargeback_employee_status = 'CONCLUDED'
+  AND ce.person_id = '550e8400-e29b-41d4-a716-446655440000'
+  AND c.deleted = false
+  AND c.test = false
+ORDER BY data_estorno DESC
+    </sql>
+</exemplo>
+
+<exemplo>
+    <pergunta_exemplo>Histórico de notas fiscais emitidas, com CNPJ da nota, benefício, valor, data de emissão, status e link.</pergunta_exemplo>
+    <sql>
+SELECT
+  cti.group_id AS company_group_id,
+  cti.id AS id_nota,
+  cti.receivable_asset_id,
+  cti.company_cnpj AS cnpj_nf,
+  cti.product_type AS saldo_ifood_nf,
+  cti.amount AS valor_nf,
+  DATE(cti.created_at) AS data_emissao_nf,
+  cti.tax_invoice_status AS status_nf,
+  cti.tax_invoice_url AS link_nf
+FROM main.ifoodoffice_invoice_service.company_tax_invoice cti
+WHERE cti.group_id = '550e8400-e29b-41d4-a716-446655440000'
+  AND cti.tax_invoice_status = 'AVAILABLE'
+  AND cti.deleted = false
+ORDER BY data_emissao_nf DESC
+    </sql>
+</exemplo>
+
+<exemplo>
+    <pergunta_exemplo>Movimentações unificadas de recargas e estornos por colaborador, com CNPJ, CPF, nome, tipo de movimentação, benefício traduzido e valor (estornos negativados).</pergunta_exemplo>
+    <sql>
+WITH base_movimentacoes AS (
+  SELECT
+    c.cnpj AS cnpj_empresa,
+    CAST(CONCAT('ID_', split(cc.id, '-')[3]) AS STRING) AS short_id_empresa,
+    CAST(CONCAT('ID_', split(ce.chargeback_id, '-')[3]) AS STRING) AS short_id_colaborador,
+    ce.tax_id AS cpf_colaborador,
+    ce.employee_name AS nome_colaborador,
+    'Estorno de Recarga' AS tipo_movimentacao,
+    ce.updated_at AS timestamp_movimentacao,
+    ce.provider AS saldo_ifood,
+    ce.total_recharged_value AS valor,
+    cc.login AS usuario_responsavel,
+    cc.group_id AS company_group_id
+  FROM main.ifoodoffice_recharge_chargeback.chargeback cc
+  INNER JOIN main.ifoodoffice_recharge_chargeback.chargeback_employee ce
+    ON cc.id = ce.chargeback_id
+  INNER JOIN fintech_companies.companies c
+    ON c.company_id = cc.company_id
+  WHERE cc.group_id = '550e8400-e29b-41d4-a716-446655440000'
+    AND cc.chargeback_status = 'CONCLUDED'
+    AND ce.chargeback_employee_status = 'CONCLUDED'
+    AND c.deleted = false
+    AND c.test = false
+
+  UNION ALL
+
+  SELECT
+    br.company.cnpj AS cnpj_empresa,
+    CAST(CONCAT('ID_', split(br.order_id, '-')[3]) AS STRING) AS short_id_empresa,
+    CAST(CONCAT('ID_', split(br.order_item_id, '-')[3]) AS STRING) AS short_id_colaborador,
+    e.cpf AS cpf_colaborador,
+    e.name AS nome_colaborador,
+    'Distribuicao de Recarga' AS tipo_movimentacao,
+    br.order_info.distributed AS timestamp_movimentacao,
+    br.product_key AS saldo_ifood,
+    br.amount AS valor,
+    br.order_info.created_by AS usuario_responsavel,
+    br.company_group.id AS company_group_id
+  FROM main.fintech_finance.ifood_benefits_recharges br
+  INNER JOIN main.ifoodoffice_management_silver.employee e
+    ON e.id = br.employee_id
+  WHERE br.company_group.id = '550e8400-e29b-41d4-a716-446655440000'
+    AND br.order_status = 'DISTRIBUTION_COMPLETE'
+    AND br.order_item_status = 'DISTRIBUTION_COMPLETE'
+)
+SELECT
+  company_group_id,
+  cnpj_empresa,
+  short_id_empresa,
+  cpf_colaborador,
+  nome_colaborador,
+  tipo_movimentacao,
+  timestamp_movimentacao,
+  CASE
+    WHEN saldo_ifood = 'FOOD_VOUCHER' THEN 'ALIMENTAÇÃO PAT'
+    WHEN saldo_ifood = 'MEAL_VOUCHER' THEN 'REFEIÇÃO PAT'
+    WHEN saldo_ifood = 'MOBILITY_VOUCHER' THEN 'MOBILIDADE'
+    WHEN saldo_ifood = 'CULTURE_VOUCHER' THEN 'CULTURA'
+    WHEN saldo_ifood = 'EDUCATION_VOUCHER' THEN 'EDUCAÇÃO'
+    WHEN saldo_ifood = 'HOME_OFFICE_VOUCHER' THEN 'HOME OFFICE'
+    WHEN saldo_ifood = 'PHARMACY_VOUCHER' THEN 'SAÚDE E BEM-ESTAR'
+    WHEN saldo_ifood = 'FLEX_MEAL_VOUCHER' THEN 'ALIMENTAÇÃO+REFEIÇÃO NÃO PAT'
+    WHEN saldo_ifood = 'IFOOD_FLEX_MEAL_VOUCHER' THEN 'COMER NO IFOOD'
+    WHEN saldo_ifood = 'PHARMACY_VOUCHER_V2' THEN 'FARMÁCIA'
+    WHEN saldo_ifood = 'REWARD_VOUCHER' THEN 'LIVRE'
+    ELSE saldo_ifood
+  END AS saldo_ifood,
+  CASE
+    WHEN tipo_movimentacao = 'Estorno de Recarga' THEN valor * -1
+    ELSE valor
+  END AS valor,
+  usuario_responsavel
+FROM base_movimentacoes
+ORDER BY timestamp_movimentacao DESC
+    </sql>
+</exemplo>
