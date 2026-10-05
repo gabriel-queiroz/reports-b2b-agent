@@ -1,0 +1,8 @@
+# Versões com que a suíte foi rodada fora do projeto principal.
+pytest==9.1.1
+sqlglot==30.21.0
+langchain-core==1.6.6
+langchain-openai==1.6.7
+langgraph==1.2.12
+httpx==0.28.1
+pydantic==2.13.5
