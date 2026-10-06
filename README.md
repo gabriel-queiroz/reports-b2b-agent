@@ -46,3 +46,7 @@ scripts/migrate_to_main.sh --apply    # copia
 ```
 
 Os caminhos padrão podem ser trocados com `SOURCE=... DEST=...`. Para o Claude Code fazer a migração inteira (branch, cópia, ajustes e testes), use o prompt em `scripts/migrate_to_main.prompt.md`.
+
+## Atualizar um projeto principal que já recebeu a migração anterior
+
+Se o `ifp-beni-agents` já tem o catálogo em `data/tabelas/` mas ainda usa o gerador de SQL separado, siga [`docs/atualizacao-agente-unico.md`](docs/atualizacao-agente-unico.md). O guia usa o `scripts/update_single_agent.sh`, que antes de copiar confere a versão do destino e aponta arquivos alterados lá desde a migração anterior.

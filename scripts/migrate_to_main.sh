@@ -32,12 +32,14 @@ REMOVED_NAMES='build_campos_solicitados_block|is_detalhe_column|schema_path|sche
 
 EXCLUDES=(
   --exclude=_local/
-  --exclude=.git/
+  --exclude=.git
   --exclude=.gitignore
   --exclude=README.md
   --exclude=requirements-dev.txt
   --exclude=scripts/migrate_to_main.sh
   --exclude=scripts/migrate_to_main.prompt.md
+  --exclude=scripts/update_single_agent.sh
+  --exclude=docs/
   --exclude=__pycache__/
   --exclude=.pytest_cache/
   --exclude=.venv/
@@ -99,10 +101,23 @@ echo
 
 # ------------------------------------------------------------------- cópia --
 
+# Pastas que só existem no destino (ex.: report_generator/). O rsync apaga os
+# arquivos delas, mas não a pasta quando sobra __pycache__ ou .DS_Store (que
+# estão excluídos) — e uma pasta assim continua importável como namespace
+# package. Ficam as que guardam um arquivo protegido (README.md etc.).
+stale_dirs() {
+  (cd "$DEST" && find . -type d ! -name __pycache__ ! -path '*/__pycache__/*' ! -path './.git*' ! -path './_local*' ! -path './docs*' -print) \
+    | sed 's|^\./||' | grep -v '^\.$' | sort -r | while IFS= read -r dir; do
+      [ -d "$SOURCE/$dir" ] && continue
+      leftovers="$(cd "$DEST/$dir" && find . -type f \( -name README.md -o -name .gitignore -o -name requirements-dev.txt \) | head -1)"
+      [ -z "$leftovers" ] && echo "$dir"
+    done || true
+}
+
 echo "== O que muda no destino"
 # -v em vez de --itemize-changes: funciona no rsync antigo do macOS e no openrsync.
-CHANGES="$(rsync -a -c -v --delete --dry-run "${EXCLUDES[@]}" "$SOURCE/" "$DEST/" \
-  | grep -vE '^(building file list|sending incremental|sent |total size|Transfer starting|$)' \
+CHANGES="$(rsync -a -c -v --delete --dry-run "${EXCLUDES[@]}" "$SOURCE/" "$DEST/" 2>/dev/null \
+  | grep -vE '^(building file list|sending incremental|sent |total size|Transfer starting|cannot delete non-empty directory|$)' \
   | grep -vE '/$' || true)"
 if [ -z "$CHANGES" ]; then
   echo "nada: o destino já está igual à POC."
@@ -112,10 +127,15 @@ echo "$CHANGES"
 echo
 DELETIONS="$(printf '%s\n' "$CHANGES" | grep -c '^deleting ' || true)"
 echo "($DELETIONS arquivo(s) serão apagados; os demais são criados ou atualizados)"
+STALE="$(stale_dirs)"
+if [ -n "$STALE" ]; then
+  echo "Pastas que saem junto (sobram só caches nelas):"
+  printf '  %s/\n' $STALE
+fi
 echo
 
 if [ "$APPLY" -eq 0 ]; then
-  echo "Simulação apenas. Para aplicar: $0 --apply"
+  echo "Simulação apenas. Para aplicar: ${CALLER:-$0} --apply"
   exit 0
 fi
 
@@ -126,7 +146,11 @@ case "$ANSWER" in
   *) echo "Cancelado."; exit 1 ;;
 esac
 
-rsync -a -c --delete "${EXCLUDES[@]}" "$SOURCE/" "$DEST/"
+rsync -a -c --delete "${EXCLUDES[@]}" "$SOURCE/" "$DEST/" \
+  2> >(grep -v 'cannot delete non-empty directory' >&2)
+for dir in $(stale_dirs); do
+  rm -rf "${DEST:?}/$dir"
+done
 
 echo
 echo "Copiado. Próximos passos no projeto principal ($MAIN_ROOT):"
