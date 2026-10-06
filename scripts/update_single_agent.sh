@@ -8,10 +8,13 @@
 #   scripts/update_single_agent.sh            # simulação: só mostra o que mudaria
 #   scripts/update_single_agent.sh --apply    # aplica (pede confirmação)
 #
-# Variáveis (opcionais): SOURCE, DEST (as mesmas do migrate_to_main.sh) e
-# BASE, o commit da POC que foi levado na migração anterior.
+# Variáveis (opcionais): SOURCE, DEST (as mesmas do migrate_to_main.sh),
+# BASE, o commit da POC que foi levado na migração anterior, e TARGET_BRANCH,
+# o branch do ifp-beni-agents onde a migração anterior foi feita
+# (TARGET_BRANCH= vazio desliga a checagem).
 #
 # Antes de copiar, este script:
+#   0. confere que o ifp-beni-agents está no TARGET_BRANCH e não atrás do remoto;
 #   1. confere que o destino está na versão anterior (e não na original nem já
 #      atualizado);
 #   2. lista arquivos que alguém mudou no projeto principal depois da migração
@@ -24,6 +27,7 @@ set -euo pipefail
 SOURCE="${SOURCE:-/Users/queiroz.gabriel/Development/pocs/react-b2b-agent}"
 DEST="${DEST:-/Users/queiroz.gabriel/Development/ifp-beni-agents/packages/domain/agents/reports_b2b}"
 BASE="${BASE:-fd07109}"
+TARGET_BRANCH="${TARGET_BRANCH-refactor/reports-b2b-table-catalog}"
 
 case "${1:-}" in
   --apply|"") ;;
@@ -41,6 +45,29 @@ git -C "$SOURCE" cat-file -e "$BASE^{commit}" 2>/dev/null \
   || fail "commit BASE=$BASE não existe na POC. Rode 'git -C $SOURCE fetch --unshallow' ou ajuste BASE."
 [ -f "$SOURCE/reports_react_agent/prompts.py" ] \
   || fail "a POC ainda não tem a versão de agente único. Rode 'git -C $SOURCE pull'."
+
+MAIN_ROOT="$(git -C "$DEST" rev-parse --show-toplevel 2>/dev/null)" \
+  || fail "o destino não está num repositório git: $DEST"
+
+# --------------------------------------------------------------- 0. branch --
+
+echo "== Branch do projeto principal"
+CURRENT_BRANCH="$(git -C "$MAIN_ROOT" branch --show-current)"
+if [ -n "$TARGET_BRANCH" ] && [ "$CURRENT_BRANCH" != "$TARGET_BRANCH" ]; then
+  fail "o ifp-beni-agents está no branch '${CURRENT_BRANCH:-(detached)}', não em '$TARGET_BRANCH'. Rode: git -C $MAIN_ROOT switch $TARGET_BRANCH && git -C $MAIN_ROOT pull"
+fi
+echo "$CURRENT_BRANCH"
+# Compara com o que o último fetch trouxe do remoto; sem upstream, não há o que comparar.
+if git -C "$MAIN_ROOT" rev-parse --abbrev-ref '@{upstream}' >/dev/null 2>&1; then
+  BEHIND="$(git -C "$MAIN_ROOT" rev-list --count 'HEAD..@{upstream}')"
+  if [ "$BEHIND" -gt 0 ]; then
+    fail "o branch está $BEHIND commit(s) atrás do remoto. Rode: git -C $MAIN_ROOT pull"
+  fi
+  echo "em dia com $(git -C "$MAIN_ROOT" rev-parse --abbrev-ref '@{upstream}') (pelo último fetch)"
+else
+  echo "sem branch remoto configurado"
+fi
+echo
 
 # ------------------------------------------------------ 1. versão do destino --
 
@@ -88,7 +115,6 @@ echo
 # ------------------------------------------------- 3. usos fora do pacote --
 
 echo "== Usos, fora do reports_b2b, do que saiu nesta versão"
-MAIN_ROOT="$(git -C "$DEST" rev-parse --show-toplevel)"
 REL_DEST="$(cd "$DEST" && pwd)"
 REL_DEST="${REL_DEST#"$MAIN_ROOT"/}"
 EXTERNAL="$(cd "$MAIN_ROOT" && git grep -nE "$REMOVED_NOW" -- ':!'"$REL_DEST" 2>/dev/null || true)"
