@@ -20,3 +20,14 @@ No projeto principal os imports `domain.agents.reports_b2b...` resolvem pelo pac
 ```bash
 python scripts/split_schema.py caminho/para/schema.md data/tabelas
 ```
+
+## Levar para o projeto principal
+
+`scripts/migrate_to_main.sh` copia este repositório para `packages/domain/agents/reports_b2b` do `ifp-beni-agents`, deixando de fora `_local/`, `.git`, `README.md` e `requirements-dev.txt`, e apaga o `data/schema.md` antigo. Sem argumentos só simula; com `--apply` copia depois de pedir confirmação. Recusa rodar se o destino tiver mudanças não commitadas e avisa se algum código fora do pacote usa nomes que mudaram.
+
+```bash
+scripts/migrate_to_main.sh            # simulação
+scripts/migrate_to_main.sh --apply    # copia
+```
+
+Os caminhos padrão podem ser trocados com `SOURCE=... DEST=...`.
