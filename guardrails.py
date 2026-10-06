@@ -1,49 +1,21 @@
 """Guardrails de borda: o que entra no prompt e nas f-strings de SQL.
 
-Duas entradas cruzam a fronteira do agente e acabam interpoladas em texto:
+- `group_id`: vai para o prompt e para `f"... = '{group_id}'"` na cláusula de
+  tenant. Precisa ser um UUID; é o único caminho de SQL injection literal do
+  fluxo.
+- CNPJ/CPF: o agente pode escrever o documento com máscara no filtro; a
+  `execute_query` normaliza os literais antes do guard.
+- `desired_fields`: rótulos que não resolvem contra o catálogo viram erro
+  acionável (`InvalidDesiredFieldsError`).
 
-- `group_id`: vai para `f"... = '{group_id}'"` na cláusula de tenant. Precisa ser
-  um UUID; é o único caminho de SQL injection literal do fluxo.
-- `pergunta`: vai para dentro de `<pergunta>…</pergunta>` no prompt de geração
-  de SQL. Precisa ser tratada como dado, sem poder fechar a tag e virar
-  instrução.
+O SQL em si é validado no `sql_guard`, não aqui.
 
 Este módulo não conhece LLM, langchain nem infra — é `uuid` e `re`. Fica no
 pacote do agente de propósito, para viajar junto com ele.
 """
 
 import re
-import unicodedata
 from uuid import UUID
-
-# Limite da pergunta já reescrita pelo agente. Acima disso não é pergunta:
-# é conteúdo colado tentando ocupar a janela de contexto.
-MAX_QUESTION_LENGTH = 4000
-
-# Tags que estruturam o prompt de geração de SQL (`sql_user.txt`). Uma pergunta
-# que as contenha está tentando sair da região de dados.
-_PROMPT_TAGS = (
-    "pergunta",
-    "dominio",
-    "tabelas",
-    "group_id",
-    "system",
-    "sistema",
-    "instrucoes",
-    "instruções",
-)
-
-_OPENING_PROMPT_TAG_RE = re.compile(
-    r"<\s*(?:" + "|".join(_PROMPT_TAGS) + r")\s*>",
-    re.IGNORECASE,
-)
-
-# Fechamento de qualquer tag. Nenhuma pergunta legítima traz `</algo>`, e é
-# exatamente essa a sequência usada para escapar de `<pergunta>`.
-_CLOSING_TAG_RE = re.compile(r"<\s*/\s*[A-Za-z_][\w\-]*\s*>")
-
-# Caracteres de controle preservados: quebra de linha e tabulação.
-_ALLOWED_CONTROL_CHARS = {"\n", "\t"}
 
 # Máscaras comuns de CNPJ/CPF. O Databricks guarda esses documentos sem
 # pontuação, então normalizamos a entrada antes de ela virar SQL.
@@ -62,10 +34,6 @@ _CPF_FORMATTED_RE = re.compile(
 
 class InvalidGroupIdError(ValueError):
     """`group_id` ausente ou fora do formato UUID."""
-
-
-class InvalidQuestionError(ValueError):
-    """Pergunta vazia, longa demais ou de tipo inesperado."""
 
 
 class InvalidDesiredFieldsError(ValueError):
@@ -125,77 +93,21 @@ def is_valid_group_id(group_id: object) -> bool:
     return True
 
 
-def sanitize_question(question: object) -> str:
-    """Higieniza a pergunta antes de ela entrar no prompt.
+def normalize_cnpj_cpf(text: str) -> str:
+    """Remove a máscara de CNPJ/CPF de um texto.
 
-    Remove caracteres de controle, neutraliza as tags que delimitam as seções
-    do prompt e recusa entrada vazia ou grande demais.
-
-    Args:
-        question: pergunta reescrita pelo agente.
-
-    Returns:
-        Pergunta segura para interpolar dentro de `<pergunta>`.
-
-    Raises:
-        InvalidQuestionError: se não for texto, se ficar vazia depois da
-            limpeza ou se ultrapassar `MAX_QUESTION_LENGTH`.
-    """
-    if not isinstance(question, str):
-        raise InvalidQuestionError(
-            f"pergunta deve ser uma string, veio {type(question).__name__}."
-        )
-
-    if len(question) > MAX_QUESTION_LENGTH:
-        raise InvalidQuestionError(
-            f"pergunta com {len(question)} caracteres excede o limite de "
-            f"{MAX_QUESTION_LENGTH}. Reescreva de forma mais curta e objetiva."
-        )
-
-    cleaned = _strip_control_chars(question)
-    cleaned = _CLOSING_TAG_RE.sub(" ", cleaned)
-    cleaned = _OPENING_PROMPT_TAG_RE.sub(" ", cleaned)
-
-    # Colapsa o espaço em branco deixado pelas remoções, preservando quebras.
-    cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
-    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
-    cleaned = cleaned.strip()
-
-    if not cleaned:
-        raise InvalidQuestionError("pergunta vazia depois da higienização.")
-
-    return cleaned
-
-
-def normalize_cnpj_cpf(question: str) -> str:
-    """Remove a máscara de CNPJ/CPF antes de a pergunta virar SQL.
-
-    O Databricks guarda esses documentos sem pontuação. Ao normalizar aqui, o
-    modelo gera o filtro com o valor exato que existe na tabela:
+    O Databricks guarda esses documentos sem pontuação; um filtro com a máscara
+    não encontra nada:
 
     - ``12.345.678/0001-90`` -> ``12345678000190``
     - ``12.ABC.345/0001-90`` -> ``12ABC345000190``
     - ``123.456.789-00`` -> ``12345678900``
     """
-    question = _CNPJ_FORMATTED_RE.sub(_normalize_cnpj_match, question)
-    question = _CPF_FORMATTED_RE.sub(r"\1\2\3\4", question)
-    return question
+    text = _CNPJ_FORMATTED_RE.sub(_normalize_cnpj_match, text)
+    text = _CPF_FORMATTED_RE.sub(r"\1\2\3\4", text)
+    return text
 
 
 def _normalize_cnpj_match(match: re.Match) -> str:
     """Concatena os grupos do CNPJ e normaliza letras para maiúsculas."""
     return "".join(match.groups()).upper()
-
-
-def _strip_control_chars(text: str) -> str:
-    """Remove caracteres de controle e formatação invisível (Cc/Cf).
-
-    Mantém `\\n` e `\\t`. A categoria `Cf` cobre os invisíveis usados para
-    esconder instrução dentro do texto (zero-width, marcas de direção, BOM).
-    """
-    return "".join(
-        char
-        for char in text
-        if char in _ALLOWED_CONTROL_CHARS
-        or unicodedata.category(char) not in ("Cc", "Cf")
-    )

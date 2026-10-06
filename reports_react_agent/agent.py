@@ -12,10 +12,11 @@ from domain.agents.reports_b2b.guardrails import (
     InvalidGroupIdError,
     validate_group_id,
 )
-from domain.agents.reports_b2b.report_generator.prompts import agent_system_prompt
-from domain.agents.reports_b2b.schema_extractor import build_domains_text
+from domain.agents.reports_b2b.reports_react_agent.prompts import agent_system_prompt
 from domain.agents.reports_b2b.tools.execute_query import execute_query
+from domain.agents.reports_b2b.tools.get_table_schema import get_table_schema
 from domain.agents.reports_b2b.tools.list_fields import list_fields
+from domain.agents.reports_b2b.tools.resolve_fields import resolve_fields
 from domain.core.logger import Logger
 from domain.infra.genplat.genplat_provider import GenplatProvider
 
@@ -23,9 +24,14 @@ from domain.infra.genplat.genplat_provider import GenplatProvider
 class ReportsB2bReactAgent(BaseAgent):
     """ReAct agent for reports B2B data queries.
 
-    Uses execute_query tool for SQL generation and execution.
-    The LLM autonomously decides when to call the tool (ReAct pattern).
+    Um agente só: conversa com o usuário, consulta o catálogo sob demanda
+    (`list_fields`, `resolve_fields`, `get_table_schema`), escreve o SQL e o
+    entrega à `execute_query`, que valida no `sql_guard` e pede o relatório.
+    Se o guard recusar, o motivo volta como resultado da tool e o agente
+    corrige no próprio loop.
     """
+
+    TOOLS = [list_fields, resolve_fields, get_table_schema, execute_query]
 
     def __init__(
         self,
@@ -35,17 +41,11 @@ class ReportsB2bReactAgent(BaseAgent):
         self.logger = logger
         self.genplat_provider = genplat_provider
 
-        # Descrição dos domínios derivada do catálogo (data/tabelas/), não mais copiada
-        # à mão aqui.
-        self.domains_text = build_domains_text()
-
-        # Build system prompt with domains (group_id will be injected during __call__)
-        system_prompt = agent_system_prompt(domains=self.domains_text, group_id=None)
-
+        # O group_id entra por sessão em `_build_system_prompt`.
         super().__init__(
             name="reports_b2b_react",
-            system_prompt=system_prompt,
-            tools=[list_fields, execute_query],
+            system_prompt=agent_system_prompt(group_id=None),
+            tools=self.TOOLS,
             state_schema=AgentState,
         )
 
@@ -62,11 +62,7 @@ class ReportsB2bReactAgent(BaseAgent):
         única no grafo compilado, e com duas sessões concorrentes o prompt de
         um usuário receberia o UUID do outro.
         """
-        group_id = state.get("metadata", {}).get("group_id") or "{group_id_not_set}"
-        return agent_system_prompt(
-            domains=self.domains_text,
-            group_id=group_id,
-        )
+        return agent_system_prompt(group_id=state.get("metadata", {}).get("group_id"))
 
     @staticmethod
     def _reject_group_id(error_message: str) -> Command:

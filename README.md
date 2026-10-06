@@ -1,8 +1,23 @@
 # reports_b2b
 
-Agente ReAct de relatórios B2B do iFood Benefícios: pergunta em linguagem natural → SQL validado pelo `sql_guard` → relatório .csv gerado pelo Reports Service.
+Agente ReAct de relatórios B2B do iFood Benefícios: pergunta em linguagem natural → SQL escrito pelo próprio agente e validado pelo `sql_guard` → relatório .csv gerado pelo Reports Service.
 
-Nesta versão o catálogo das tabelas do Databricks está dividido em um arquivo por tabela, em `data/tabelas/`, no lugar do antigo `data/schema.md`. O formato e as regras de cada arquivo estão em [`data/tabelas/_LEIAME.md`](data/tabelas/_LEIAME.md).
+## Como funciona
+
+Um agente só, com um prompt só (`reports_react_agent/agent_prompt.txt`). Ele conversa com o usuário, confirma o relatório e escreve o SQL. Não existe mais um segundo LLM gerando a query.
+
+O prompt leva o índice do catálogo (tabelas, domínios e relacionamentos), as regras gerais e os exemplos pergunta → SQL (`few_shot.txt`, com o `group_id` da sessão). O schema de cada tabela vem por tool, quando o agente precisa.
+
+| Tool | Para quê |
+|------|----------|
+| `list_fields(domain)` | Campos do domínio com o nome que o usuário vê |
+| `resolve_fields(domain, desired_fields)` | Campos confirmados → coluna física + alias PT-BR, e quando a medida entra com `SUM` |
+| `get_table_schema(table)` | Colunas, aliases, regra multi-tenant, partição, filtros padrão e enums de uma tabela |
+| `execute_query(sql)` | Valida no `sql_guard` e pede o relatório |
+
+Quando o `sql_guard` recusa, a `execute_query` devolve `"status": "invalid_sql"` com o motivo, e o agente corrige na mesma conversa. O `group_id` e o usuário vêm do state da sessão, nunca do modelo; o que vai para o Reports Service é o SQL regerado a partir da AST, com o filtro de tenant garantido.
+
+O catálogo das tabelas do Databricks está dividido em um arquivo por tabela, em `data/tabelas/`. O formato e as regras de cada arquivo estão em [`data/tabelas/_LEIAME.md`](data/tabelas/_LEIAME.md).
 
 ## Testes
 
@@ -23,7 +38,7 @@ python scripts/split_schema.py caminho/para/schema.md data/tabelas
 
 ## Levar para o projeto principal
 
-`scripts/migrate_to_main.sh` copia este repositório para `packages/domain/agents/reports_b2b` do `ifp-beni-agents`, deixando de fora `_local/`, `.git`, `README.md` e `requirements-dev.txt`, e apaga o `data/schema.md` antigo. Sem argumentos só simula; com `--apply` copia depois de pedir confirmação. Recusa rodar se o destino tiver mudanças não commitadas e avisa se algum código fora do pacote usa nomes que mudaram.
+`scripts/migrate_to_main.sh` copia este repositório para `packages/domain/agents/reports_b2b` do `ifp-beni-agents`, deixando de fora `_local/`, `.git`, `README.md` e `requirements-dev.txt`, e apaga o que não existe mais aqui (o `data/schema.md` e o `report_generator/` antigos). Sem argumentos só simula; com `--apply` copia depois de pedir confirmação. Recusa rodar se o destino tiver mudanças não commitadas e avisa se algum código fora do pacote usa nomes que mudaram.
 
 ```bash
 scripts/migrate_to_main.sh            # simulação

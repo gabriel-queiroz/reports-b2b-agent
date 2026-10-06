@@ -14,7 +14,7 @@
 
 **Filtros padrão**: `deleted = false`, `test = false`.
 
-**Colunas que NÃO existem** (confirmado no dump do Databricks): `employee_id`, `employee_name`. O `sql_system.txt` as listava como "campos principais" — era invenção do prompt. Os equivalentes reais são `id` e `name`.
+**Colunas que NÃO existem** (confirmado no dump do Databricks): `employee_id`, `employee_name`. Um prompt antigo as listava como "campos principais" — era invenção do prompt. Os equivalentes reais são `id` e `name`.
 
 > **Exibição vazia** = coluna que existe e é aceita pelo guard, mas **não é campo de relatório**:
 > serve a JOIN, a filtro ou é ruído técnico. Em `employee` isso vale para `test` e `test_mode` — o agente pode filtrar por elas, mas não as oferece ao usuário como coluna de saída.

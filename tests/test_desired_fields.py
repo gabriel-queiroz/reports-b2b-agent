@@ -113,3 +113,27 @@ def test_recharges_all_block_lists_fields_and_aggregates_measures():
     assert "product_key" not in block
 
     assert "company_group_id" in block
+
+
+# ------------------------------------------------------------ tool resolve_fields --
+
+
+def test_resolve_fields_tool_returns_the_projection_block():
+    from domain.agents.reports_b2b.tools.resolve_fields import resolve_fields
+
+    block = resolve_fields.invoke({"domain": "recargas", "desired_fields": "all"})
+
+    assert block == build_requested_fields_block("recargas", "all")
+    assert "SUM(ifood_benefits_recharges.amount)" in block
+
+
+def test_resolve_fields_tool_turns_unknown_field_into_message():
+    """Campo inexistente volta como texto para o agente, não como exceção no loop."""
+    from domain.agents.reports_b2b.tools.resolve_fields import resolve_fields
+
+    answer = resolve_fields.invoke(
+        {"domain": "colaboradores", "desired_fields": "Campo Que Não Existe"}
+    )
+
+    assert answer.startswith("Não foi possível resolver os campos")
+    assert "Campo Que Não Existe" in answer

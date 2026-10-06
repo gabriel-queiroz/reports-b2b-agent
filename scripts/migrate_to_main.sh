@@ -11,7 +11,8 @@
 #
 # Ficam de fora: _local/ (stubs só para rodar os testes fora do projeto),
 # .git, .gitignore, README.md, requirements-dev.txt e caches. Arquivos do
-# destino que não existem mais aqui (ex.: data/schema.md) são apagados.
+# destino que não existem mais aqui (ex.: data/schema.md, report_generator/)
+# são apagados.
 
 set -euo pipefail
 
@@ -27,7 +28,7 @@ esac
 
 # Nomes públicos que mudaram ou saíram. Se algo fora do reports_b2b usar
 # algum deles, a cópia quebra o projeto principal.
-REMOVED_NAMES='build_campos_solicitados_block|is_detalhe_column|schema_path|schema\.md|tabelas_dir'
+REMOVED_NAMES='build_campos_solicitados_block|is_detalhe_column|schema_path|schema\.md|tabelas_dir|report_generator|generate_query_tool|_generate_sql_internal|build_domains_text|full_documentation|get_all_tables_for_sql_generation|sanitize_question|InvalidQuestionError|MAX_QUESTION_LENGTH'
 
 EXCLUDES=(
   --exclude=_local/
@@ -89,7 +90,8 @@ if [ -n "$EXTERNAL" ]; then
   echo
   echo "ATENÇÃO: o código acima, fora do reports_b2b, usa nomes que mudaram."
   echo "Ajuste esses pontos depois da cópia (novos nomes: build_requested_fields_block,"
-  echo "is_detail_column, tables_dir; o schema.md virou data/tabelas/)."
+  echo "is_detail_column, tables_dir; o schema.md virou data/tabelas/; o report_generator"
+  echo "saiu: o prompt está em reports_react_agent/prompts.py e o SQL vem do próprio agente)."
 else
   echo "nenhum"
 fi

@@ -98,24 +98,11 @@ def test_group_id_reaches_prompt_canonical(agent, monkeypatch):
     assert GROUP_A.upper() not in command.update["response"]
 
 
-def test_prompt_describes_tool_as_it_is():
-    """O prompt mandava chamar `execute_query(pergunta=, dominio=, group_id=…)`.
+def test_agent_registers_catalog_tools_and_execute_query(agent):
+    """Um agente só: sem gerador de SQL separado por trás da `execute_query`."""
+    names = {tool.name for tool in agent.tools}
 
-    Nenhum desses parâmetros existe no schema — o modelo era instruído a chamar
-    uma ferramenta que não é a que está registrada.
-    """
-    from domain.agents.reports_b2b.report_generator.prompts import agent_system_prompt
-    from domain.agents.reports_b2b.tools.execute_query import ExecuteQueryInput
-
-    prompt = agent_system_prompt(domains="qualquer", group_id=GROUP_A)
-    params = set(ExecuteQueryInput.model_fields)
-
-    assert params == {"question", "domain", "desired_fields"}
-    for param in params:
-        assert f"{param}=" in prompt
-
-    for missing in ("pergunta=", "dominio=", "campos_desejados=", "group_id="):
-        assert missing not in prompt
+    assert names == {"list_fields", "resolve_fields", "get_table_schema", "execute_query"}
 
 
 def test_session_without_valid_tenant_does_not_enter_loop(agent, monkeypatch):

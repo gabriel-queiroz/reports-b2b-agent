@@ -15,7 +15,7 @@ SELECT
   br.order_info.custom_description AS contexto_recarga,
   br.order_info.distribute_on AS metodo_agendamento
 FROM main.fintech_finance.ifood_benefits_recharges br
-WHERE br.company_group.id = '550e8400-e29b-41d4-a716-446655440000'
+WHERE br.company_group.id = '<GROUP_ID>'
   AND br.order_status = 'DISTRIBUTION_COMPLETE'
   AND br.order_item_status = 'DISTRIBUTION_COMPLETE'
 GROUP BY
@@ -53,8 +53,8 @@ SELECT
 FROM main.fintech_finance.ifood_benefits_recharges br
 LEFT JOIN main.ifoodoffice_management_silver.employee e
   ON e.id = br.employee_id
-WHERE br.company_group.id = '550e8400-e29b-41d4-a716-446655440000'
-  AND br.person_id = '550e8400-e29b-41d4-a716-446655440000'
+WHERE br.company_group.id = '<GROUP_ID>'
+  AND br.person_id = '3f2b8c1e-7d4a-4e9b-9c6f-1a2b3c4d5e6f'
   AND br.order_status = 'DISTRIBUTION_COMPLETE'
   AND br.order_item_status = 'DISTRIBUTION_COMPLETE'
 ORDER BY data_recarga DESC
@@ -83,10 +83,9 @@ INNER JOIN main.ifoodoffice_recharge_chargeback.chargeback_employee ce
   ON cc.id = ce.chargeback_id
 INNER JOIN fintech_companies.companies c
   ON cc.company_id = c.company_id
-WHERE cc.group_id = '550e8400-e29b-41d4-a716-446655440000'
+WHERE cc.group_id = '<GROUP_ID>'
   AND cc.chargeback_status = 'CONCLUDED'
   AND c.deleted = false
-  AND c.test = false
 ORDER BY data_estorno DESC
     </sql>
 </exemplo>
@@ -117,12 +116,11 @@ INNER JOIN main.ifoodoffice_recharge_chargeback.chargeback_employee ce
   ON cc.id = ce.chargeback_id
 INNER JOIN fintech_companies.companies c
   ON cc.company_id = c.company_id
-WHERE cc.group_id = '550e8400-e29b-41d4-a716-446655440000'
+WHERE cc.group_id = '<GROUP_ID>'
   AND cc.chargeback_status = 'CONCLUDED'
   AND ce.chargeback_employee_status = 'CONCLUDED'
-  AND ce.person_id = '550e8400-e29b-41d4-a716-446655440000'
+  AND ce.person_id = '3f2b8c1e-7d4a-4e9b-9c6f-1a2b3c4d5e6f'
   AND c.deleted = false
-  AND c.test = false
 ORDER BY data_estorno DESC
     </sql>
 </exemplo>
@@ -141,7 +139,7 @@ SELECT
   cti.tax_invoice_status AS status_nf,
   cti.tax_invoice_url AS link_nf
 FROM main.ifoodoffice_invoice_service.company_tax_invoice cti
-WHERE cti.group_id = '550e8400-e29b-41d4-a716-446655440000'
+WHERE cti.group_id = '<GROUP_ID>'
   AND cti.tax_invoice_status = 'AVAILABLE'
   AND cti.deleted = false
 ORDER BY data_emissao_nf DESC
@@ -169,11 +167,10 @@ WITH base_movimentacoes AS (
     ON cc.id = ce.chargeback_id
   INNER JOIN fintech_companies.companies c
     ON c.company_id = cc.company_id
-  WHERE cc.group_id = '550e8400-e29b-41d4-a716-446655440000'
+  WHERE cc.group_id = '<GROUP_ID>'
     AND cc.chargeback_status = 'CONCLUDED'
     AND ce.chargeback_employee_status = 'CONCLUDED'
     AND c.deleted = false
-    AND c.test = false
 
   UNION ALL
 
@@ -192,7 +189,7 @@ WITH base_movimentacoes AS (
   FROM main.fintech_finance.ifood_benefits_recharges br
   INNER JOIN main.ifoodoffice_management_silver.employee e
     ON e.id = br.employee_id
-  WHERE br.company_group.id = '550e8400-e29b-41d4-a716-446655440000'
+  WHERE br.company_group.id = '<GROUP_ID>'
     AND br.order_status = 'DISTRIBUTION_COMPLETE'
     AND br.order_item_status = 'DISTRIBUTION_COMPLETE'
 )

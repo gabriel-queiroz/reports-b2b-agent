@@ -63,62 +63,6 @@ def extract_tables_by_domain() -> Dict[str, List[str]]:
     return result
 
 
-def get_all_tables_for_sql_generation() -> str:
-    """
-    Retorna TODAS as tabelas de todos os domínios como string separada por vírgula.
-
-    Isso permite que o LLM veja todos os relacionamentos entre tabelas
-    e gere SQL com JOINs corretos mesmo quando precisar consultar tabelas
-    de outros domínios para responder a pergunta completamente.
-
-    Returns:
-        String com todas as tabelas separadas por vírgula e espaço
-    """
-    tables_by_domain = extract_tables_by_domain()
-
-    all_tables = []
-    for domain, tables in tables_by_domain.items():
-        all_tables.extend(tables)
-
-    # Remove duplicatas mantendo ordem
-    unique_tables = []
-    for table in all_tables:
-        if table not in unique_tables:
-            unique_tables.append(table)
-
-    return ", ".join(unique_tables)
-
-
-def build_domains_text() -> str:
-    """Monta a descrição dos domínios a partir do catálogo, não de texto hardcoded.
-
-    É a fonte do bloco `<dominios>` do agente conversacional. A lista de tabelas
-    vem de `extract_tables_by_domain` e os títulos, de `find_table` — ou seja, a
-    mesma origem do `list_fields` e do `sql_guard`.
-    """
-    tables_by_domain = extract_tables_by_domain()
-    lines = []
-
-    for domain, paths in tables_by_domain.items():
-        titles = []
-        for path in paths:
-            if path == "fintech_companies.companies":
-                continue
-            table = find_table(path)
-            if table is not None:
-                titles.append(table.title)
-
-        if not titles:
-            titles.append("sem tabelas catalogadas")
-        lines.append(f"- **{domain}**: " + ", ".join(titles) + ".")
-
-    lines.append(
-        "- **empresas** (transversal): use `companies` para nome/CNPJ da empresa "
-        "e para o JOIN de grupo quando a tabela consultada não tiver coluna própria."
-    )
-    return "\n".join(lines)
-
-
 # ---------------------------------------------------------------------------
 # Resolução de `desired_fields`
 # ---------------------------------------------------------------------------
@@ -395,18 +339,3 @@ def table_doc(reference: str) -> str | None:
             + "\n\n".join(shared)
         )
     return "\n\n".join(parts)
-
-
-def full_documentation() -> str:
-    """Todo o catálogo num texto só, para o gerador de SQL atual (`sql_system.txt`).
-
-    Transitório: com o prompt único o agente lê tabela a tabela (`table_doc`), e
-    esta função sai junto com o gerador de SQL separado.
-    """
-    parts = [_read(GENERAL_RULES)]
-    parts += [
-        table_file(table.name).read_text(encoding="utf-8").strip()
-        for table in load_catalog().values()
-    ]
-    parts += [_read(RELATIONSHIPS), _read(SHARED_ENUMS)]
-    return "\n\n---\n\n".join(parts)
