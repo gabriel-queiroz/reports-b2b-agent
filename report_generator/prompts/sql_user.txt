@@ -1,19 +1,19 @@
-<dominio>{dominio}</dominio>
+<dominio>{domain}</dominio>
 
 <tabelas>
-{tabelas}
+{tables}
 </tabelas>
 
 <group_id>{group_id}</group_id>
 
 <campos_solicitados>
-{campos_solicitados}
+{requested_fields}
 </campos_solicitados>
 
 <pergunta>
-{pergunta}
+{question}
 </pergunta>
 
 <exemplos>
-{exemplos}
+{examples}
 </exemplos>

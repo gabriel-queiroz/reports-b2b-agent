@@ -14,37 +14,37 @@ from domain.agents.reports_b2b.sql_guard import (
     guard_query,
 )
 
-GRUPO = "550e8400-e29b-41d4-a716-446655440000"
+GROUP = "550e8400-e29b-41d4-a716-446655440000"
 
 EMPLOYEE = "main.ifoodoffice_management_silver.employee"
 COMPANIES = "fintech_companies.companies"
-RECARGAS = "main.fintech_finance.ifood_benefits_recharges"
+RECHARGES = "main.fintech_finance.ifood_benefits_recharges"
 CHARGEBACK = "main.ifoodoffice_recharge_chargeback.chargeback"
 FIN_ACCOUNT = "main.ifood_benf_transaction_service.financial_account"
 FIN_TRANSACTION = "main.ifood_benf_transaction_service.financial_transaction"
 
 
 def guard(sql: str) -> str:
-    return guard_query(sql, GRUPO)
+    return guard_query(sql, GROUP)
 
 
 # ------------------------------------------------- alias PT-BR como coluna --
 
 
-def test_alias_ptbr_no_where_e_recusado_nomeando_a_coluna_real():
+def test_ptbr_alias_in_where_is_rejected_naming_real_column():
     """O exemplo do PLANO: `id_estorno` não existe; a coluna é `id`."""
-    with pytest.raises(AliasAsColumnError) as erro:
+    with pytest.raises(AliasAsColumnError) as error:
         guard(
             f"SELECT ch.id AS id_estorno, ch.group_id AS company_group_id "
             f"FROM {CHARGEBACK} ch WHERE ch.id_estorno = 'x' LIMIT 10"
         )
 
-    mensagem = str(erro.value)
-    assert "id_estorno" in mensagem
-    assert "chargeback.id" in mensagem
+    message = str(error.value)
+    assert "id_estorno" in message
+    assert "chargeback.id" in message
 
 
-def test_alias_ptbr_multilinha_tambem_e_pego():
+def test_multiline_ptbr_alias_is_also_caught():
     """O regex de linha do validador antigo perdia o erro quando quebrava linha."""
     with pytest.raises(AliasAsColumnError):
         guard(
@@ -57,7 +57,7 @@ def test_alias_ptbr_multilinha_tambem_e_pego():
         )
 
 
-def test_alias_ptbr_depois_de_as_e_uso_correto():
+def test_ptbr_alias_after_as_is_valid_usage():
     sql = guard(
         f"SELECT ch.id AS id_estorno, ch.group_id AS company_group_id "
         f"FROM {CHARGEBACK} ch LIMIT 10"
@@ -65,7 +65,7 @@ def test_alias_ptbr_depois_de_as_e_uso_correto():
     assert "AS id_estorno" in sql
 
 
-def test_alias_de_saida_pode_ser_usado_no_order_by():
+def test_output_alias_can_be_used_in_order_by():
     """Spark resolve alias de saída em ORDER BY — não é erro."""
     sql = guard(
         f"SELECT ch.id AS id_estorno, ch.group_id AS company_group_id "
@@ -74,7 +74,7 @@ def test_alias_de_saida_pode_ser_usado_no_order_by():
     assert "ORDER BY id_estorno" in sql
 
 
-def test_alias_nao_declarado_no_order_by_e_recusado():
+def test_undeclared_alias_in_order_by_is_rejected():
     with pytest.raises((AliasAsColumnError, ColumnNotFoundError)):
         guard(
             f"SELECT ch.id AS id, ch.group_id AS company_group_id "
@@ -94,26 +94,26 @@ def test_alias_nao_declarado_no_order_by_e_recusado():
         f"GROUP BY c.social_name, c.company_group_id LIMIT 10",
     ],
 )
-def test_query_correta_nao_e_mais_reprovada(sql):
+def test_correct_query_is_no_longer_rejected(sql):
     assert guard(sql)
 
 
 # ------------------------------------------------------ coluna inexistente --
 
 
-def test_coluna_inventada_e_recusada_com_sugestao():
-    with pytest.raises(ColumnNotFoundError) as erro:
+def test_invented_column_is_rejected_with_suggestion():
+    with pytest.raises(ColumnNotFoundError) as error:
         guard(
             f"SELECT ch.chargeback_id AS id, ch.group_id AS company_group_id "
             f"FROM {CHARGEBACK} ch LIMIT 10"
         )
 
-    mensagem = str(erro.value)
-    assert "chargeback_id" in mensagem
-    assert "chargeback" in mensagem
+    message = str(error.value)
+    assert "chargeback_id" in message
+    assert "chargeback" in message
 
 
-def test_coluna_da_tabela_errada_e_recusada():
+def test_column_from_wrong_table_is_rejected():
     """`company_group_id` existe em companies, não em employee."""
     with pytest.raises(ColumnNotFoundError, match="employee"):
         guard(
@@ -123,30 +123,30 @@ def test_coluna_da_tabela_errada_e_recusada():
         )
 
 
-def test_campo_de_struct_valido_passa():
+def test_valid_struct_field_passes():
     assert guard(
         f"SELECT r.company_group.id AS company_group_id, "
         f"r.order_info.payment_method AS metodo_pagamento_recarga_info "
-        f"FROM {RECARGAS} r LIMIT 10"
+        f"FROM {RECHARGES} r LIMIT 10"
     )
 
 
-def test_campo_de_struct_inventado_e_recusado():
+def test_invented_struct_field_is_rejected():
     with pytest.raises(ColumnNotFoundError):
         guard(
             f"SELECT r.company_group.id AS company_group_id, "
-            f"r.company_group.uuid AS uuid FROM {RECARGAS} r LIMIT 10"
+            f"r.company_group.uuid AS uuid FROM {RECHARGES} r LIMIT 10"
         )
 
 
-def test_coluna_sem_qualificador_e_resolvida_contra_o_escopo():
+def test_unqualified_column_is_resolved_against_scope():
     assert guard(
         f"SELECT group_id AS company_group_id, chargeback_status AS situacao "
         f"FROM {CHARGEBACK} WHERE chargeback_status = 'CONCLUDED' LIMIT 10"
     )
 
 
-def test_coluna_sem_qualificador_inexistente_e_recusada():
+def test_missing_unqualified_column_is_rejected():
     with pytest.raises(ColumnNotFoundError):
         guard(
             f"SELECT group_id AS company_group_id FROM {CHARGEBACK} "
@@ -157,19 +157,19 @@ def test_coluna_sem_qualificador_inexistente_e_recusada():
 # ------------------------------------------- colunas de saída não filtráveis --
 
 
-@pytest.mark.parametrize("coluna", ["name", "email", "cpf"])
-def test_employee_nao_aceita_filtro_por_campo_pessoal(coluna):
+@pytest.mark.parametrize("column", ["name", "email", "cpf"])
+def test_employee_rejects_filter_by_personal_field(column):
     with pytest.raises(ColumnNotFilterableError):
         guard(
             f"SELECT c.company_group_id AS company_group_id, "
-            f"e.{coluna} AS campo "
+            f"e.{column} AS campo "
             f"FROM {EMPLOYEE} e "
             f"INNER JOIN {COMPANIES} c ON e.company_id = c.company_id "
-            f"WHERE e.{coluna} = 'x' LIMIT 10"
+            f"WHERE e.{column} = 'x' LIMIT 10"
         )
 
 
-def test_employee_nao_aceita_filtro_pessoal_sem_qualificador():
+def test_employee_rejects_unqualified_personal_filter():
     with pytest.raises(ColumnNotFilterableError):
         guard(
             f"SELECT c.company_group_id AS company_group_id, "
@@ -180,7 +180,7 @@ def test_employee_nao_aceita_filtro_pessoal_sem_qualificador():
         )
 
 
-def test_employee_aceita_filtro_por_person_id():
+def test_employee_accepts_filter_by_person_id():
     sql = guard(
         f"SELECT c.company_group_id AS company_group_id, "
         f"e.name AS nome_colaborador "
@@ -190,10 +190,10 @@ def test_employee_aceita_filtro_por_person_id():
     )
 
     assert "person_id" in sql
-    assert "c.company_group_id = '" + GRUPO + "'" in sql
+    assert "c.company_group_id = '" + GROUP + "'" in sql
 
 
-def test_cte_com_colunas_validas_nao_gera_falso_positivo():
+def test_cte_with_valid_columns_has_no_false_positive():
     assert guard(
         f"WITH estornos AS ("
         f"  SELECT ch.id AS id_estorno, ch.group_id AS company_group_id "
@@ -205,7 +205,7 @@ def test_cte_com_colunas_validas_nao_gera_falso_positivo():
 # --------------------------------------------------------- chave de JOIN --
 
 
-def test_join_por_chave_declarada_passa():
+def test_join_by_declared_key_passes():
     assert guard(
         f"SELECT c.company_group_id AS company_group_id, e.email AS email "
         f"FROM {EMPLOYEE} e "
@@ -213,19 +213,19 @@ def test_join_por_chave_declarada_passa():
     )
 
 
-def test_join_por_chave_nao_declarada_e_recusado():
-    with pytest.raises(JoinKeyError) as erro:
+def test_join_by_undeclared_key_is_rejected():
+    with pytest.raises(JoinKeyError) as error:
         guard(
             f"SELECT c.company_group_id AS company_group_id, e.email AS email "
             f"FROM {EMPLOYEE} e "
             f"INNER JOIN {COMPANIES} c ON e.id = c.company_id LIMIT 10"
         )
 
-    mensagem = str(erro.value)
-    assert "employee.company_id = companies.company_id" in mensagem
+    message = str(error.value)
+    assert "employee.company_id = companies.company_id" in message
 
 
-def test_join_de_financial_transaction_pela_conta_passa():
+def test_financial_transaction_join_by_account_passes():
     assert guard(
         f"SELECT ft.id AS id_transacao, fa.group_id AS company_group_id "
         f"FROM {FIN_TRANSACTION} ft "
@@ -233,7 +233,7 @@ def test_join_de_financial_transaction_pela_conta_passa():
     )
 
 
-def test_join_com_condicao_extra_continua_valido():
+def test_join_with_extra_condition_stays_valid():
     assert guard(
         f"SELECT c.company_group_id AS company_group_id, e.email AS email "
         f"FROM {EMPLOYEE} e "
@@ -242,7 +242,7 @@ def test_join_com_condicao_extra_continua_valido():
     )
 
 
-def test_join_entre_tabelas_sem_ligacao_declarada_e_recusado():
+def test_join_between_tables_without_declared_link_is_rejected():
     with pytest.raises(JoinKeyError, match="não declara ligação direta"):
         guard(
             f"SELECT ch.group_id AS company_group_id, e.email AS email "

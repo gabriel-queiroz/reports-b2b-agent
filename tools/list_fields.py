@@ -22,7 +22,7 @@ VALID_DOMAINS = Literal["colaboradores", "recargas", "financeiro", "estorno_reca
 
 # O STRUCT inteiro nunca é campo de relatório — só os caminhos de dentro dele,
 # que já vêm listados como colunas próprias no catálogo.
-_TIPOS_NAO_EXIBIVEIS = {"STRUCT"}
+_NON_DISPLAYABLE_TYPES = {"STRUCT"}
 
 
 class ListFieldsInput(BaseModel):
@@ -42,43 +42,43 @@ def list_fields(domain: VALID_DOMAINS) -> str:
     """
     logger.info("list_fields called for domain: %s", domain)
 
-    tabelas = extract_tables_by_domain().get(domain, [])
-    if not tabelas:
+    tables = extract_tables_by_domain().get(domain, [])
+    if not tables:
         return f"Não há domínio '{domain}' no catálogo."
 
-    blocos = []
-    for caminho in tabelas:
-        tabela = find_table(caminho)
-        if tabela is None:
+    blocks = []
+    for table_path in tables:
+        table = find_table(table_path)
+        if table is None:
             continue
 
-        grupos: dict[str, list[str]] = {}
-        for coluna in tabela.columns:
-            if not (coluna.display and coluna.type.upper() not in _TIPOS_NAO_EXIBIVEIS):
+        groups: dict[str, list[str]] = {}
+        for column in table.columns:
+            if not (column.display and column.type.upper() not in _NON_DISPLAYABLE_TYPES):
                 continue
-            grupos.setdefault(coluna.group or "Campos", []).append(
-                f"- {coluna.display}"
+            groups.setdefault(column.group or "Campos", []).append(
+                f"- {column.display}"
             )
 
-        if not grupos:
+        if not groups:
             continue
 
-        if len(grupos) == 1:
-            linhas = next(iter(grupos.values()))
+        if len(groups) == 1:
+            lines = next(iter(groups.values()))
         else:
-            linhas = []
-            for grupo, campos in grupos.items():
-                linhas.append(f"**{grupo}**")
-                linhas.extend(campos)
+            lines = []
+            for group, fields in groups.items():
+                lines.append(f"**{group}**")
+                lines.extend(fields)
 
-        blocos.append(f"**{tabela.title}**\n" + "\n".join(linhas))
+        blocks.append(f"**{table.title}**\n" + "\n".join(lines))
 
-    if not blocos:
+    if not blocks:
         return f"Não há campos catalogados para o domínio '{domain}'."
 
     return (
         f"Campos disponíveis no domínio **{domain}**:\n\n"
-        + "\n\n".join(blocos)
+        + "\n\n".join(blocks)
         + "\n\nApresente estes nomes ao usuário exatamente como estão aqui. "
         "Os grupos em negrito indicam o nível de cada campo (ex.: Recarga "
         "(granularidade de empresa), Detalhes da Recarga (granularidade de "

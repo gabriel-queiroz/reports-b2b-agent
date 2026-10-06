@@ -2,7 +2,7 @@
 """Migração única: divide `data/schema.md` em `data/tabelas/` (um arquivo por tabela).
 
 Uso:
-    python dividir_schema.py <reports_b2b>/data/schema.md <reports_b2b>/data/tabelas
+    python split_schema.py <reports_b2b>/data/schema.md <reports_b2b>/data/tabelas
 
 O conteúdo de cada tabela sai como estava no schema.md. O que muda de lugar:
 
@@ -29,7 +29,7 @@ from pathlib import Path
 
 # Prefixo do título `###` de cada bloco de enum -> tabela dona da coluna.
 # `None` = enum compartilhado entre tabelas.
-ENUM_DONO = {
+ENUM_OWNER = {
     "Produtos (": None,
     "Recarga — Status do pedido": "ifood_benefits_recharges",
     "Recarga — Status pós-pago": "ifood_benefits_recharges",
@@ -50,7 +50,7 @@ ENUM_DONO = {
 }
 
 # Seções `##` sem número -> chave usada abaixo.
-SECOES_GLOBAIS = {
+GLOBAL_SECTIONS = {
     "INSTRUÇÃO IMPORTANTE": "aliases",
     "TABELAS DISPONÍVEIS": "indice",
     "RELACIONAMENTOS": "relacionamentos",
@@ -62,141 +62,141 @@ SECOES_GLOBAIS = {
 }
 
 _H2_RE = re.compile(r"^## .+$", re.MULTILINE)
-_TABELA_RE = re.compile(r"^## \d+\.\s")
+_TABLE_RE = re.compile(r"^## \d+\.\s")
 _LOCAL_RE = re.compile(r"\*\*Local(?:ização)?\*\*:\s*`([^`]+)`")
-_RELACIONAMENTOS_LINHA_RE = re.compile(r"^\*\*Relacionamentos\*\*:.*\n\n?", re.MULTILINE)
-_H3_RE = re.compile(r"^### (?P<titulo>.+)$", re.MULTILINE)
+_RELATIONSHIP_LINE_RE = re.compile(r"^\*\*Relacionamentos\*\*:.*\n\n?", re.MULTILINE)
+_H3_RE = re.compile(r"^### (?P<title>.+)$", re.MULTILINE)
 
 
-def limpar(texto: str) -> str:
+def clean(text: str) -> str:
     """Tira o separador `---`, o rodapé e as linhas em branco do fim."""
-    linhas = texto.rstrip().splitlines()
-    while linhas and (
-        not linhas[-1].strip()
-        or linhas[-1].strip() == "---"
-        or linhas[-1].startswith("*Documentação atualizada")
+    lines = text.rstrip().splitlines()
+    while lines and (
+        not lines[-1].strip()
+        or lines[-1].strip() == "---"
+        or lines[-1].startswith("*Documentação atualizada")
     ):
-        linhas.pop()
-    return "\n".join(linhas)
+        lines.pop()
+    return "\n".join(lines)
 
 
-def sem_titulo(secao: str) -> str:
+def untitled(section: str) -> str:
     """Corpo da seção, sem a linha `## Título`."""
-    return limpar(secao.split("\n", 1)[1]).strip("\n")
+    return clean(section.split("\n", 1)[1]).strip("\n")
 
 
-def fatiar_h2(texto: str) -> list[str]:
-    marcas = list(_H2_RE.finditer(texto))
+def split_h2(text: str) -> list[str]:
+    marks = list(_H2_RE.finditer(text))
     return [
-        texto[m.start() : marcas[i + 1].start() if i + 1 < len(marcas) else len(texto)]
-        for i, m in enumerate(marcas)
+        text[m.start() : marks[i + 1].start() if i + 1 < len(marks) else len(text)]
+        for i, m in enumerate(marks)
     ]
 
 
-def fatiar_h3(corpo: str) -> tuple[str, list[tuple[str, str]]]:
+def split_h3(body: str) -> tuple[str, list[tuple[str, str]]]:
     """(texto antes do primeiro `###`, [(título, bloco sem a linha do título)])."""
-    marcas = list(_H3_RE.finditer(corpo))
-    intro = corpo[: marcas[0].start()].strip() if marcas else corpo.strip()
-    blocos = []
-    for i, m in enumerate(marcas):
-        fim = marcas[i + 1].start() if i + 1 < len(marcas) else len(corpo)
-        blocos.append((m.group("titulo").strip(), limpar(corpo[m.end() : fim]).strip("\n")))
-    return intro, blocos
+    marks = list(_H3_RE.finditer(body))
+    intro = body[: marks[0].start()].strip() if marks else body.strip()
+    blocks = []
+    for i, m in enumerate(marks):
+        end = marks[i + 1].start() if i + 1 < len(marks) else len(body)
+        blocks.append((m.group("title").strip(), clean(body[m.end() : end]).strip("\n")))
+    return intro, blocks
 
 
-def dono_do_enum(titulo: str) -> str | None:
-    donos = [dono for prefixo, dono in ENUM_DONO.items() if titulo.startswith(prefixo)]
-    if len(donos) != 1:
-        raise SystemExit(f"Bloco de enum sem dono único: {titulo!r}")
-    return donos[0]
+def enum_owner(title: str) -> str | None:
+    owners = [owner for prefix, owner in ENUM_OWNER.items() if title.startswith(prefix)]
+    if len(owners) != 1:
+        raise SystemExit(f"Bloco de enum sem dono único: {title!r}")
+    return owners[0]
 
 
-def main(origem: Path, destino: Path) -> None:
-    texto = origem.read_text(encoding="utf-8")
-    destino.mkdir(parents=True, exist_ok=True)
+def main(source: Path, destination: Path) -> None:
+    text = source.read_text(encoding="utf-8")
+    destination.mkdir(parents=True, exist_ok=True)
 
-    tabelas: dict[str, str] = {}
-    globais: dict[str, str] = {}
-    for secao in fatiar_h2(texto):
-        titulo = secao.splitlines()[0]
-        if _TABELA_RE.match(titulo):
-            nome = _LOCAL_RE.search(secao).group(1).split(".")[-1]
-            tabelas[nome] = _RELACIONAMENTOS_LINHA_RE.sub("", limpar(secao))
+    tables: dict[str, str] = {}
+    global_sections: dict[str, str] = {}
+    for section in split_h2(text):
+        title = section.splitlines()[0]
+        if _TABLE_RE.match(title):
+            name = _LOCAL_RE.search(section).group(1).split(".")[-1]
+            tables[name] = _RELATIONSHIP_LINE_RE.sub("", clean(section))
             continue
-        chave = next((v for k, v in SECOES_GLOBAIS.items() if k in titulo), None)
-        if chave is None:
-            raise SystemExit(f"Seção sem destino definido: {titulo!r}")
-        globais[chave] = sem_titulo(secao)
+        key = next((v for k, v in GLOBAL_SECTIONS.items() if k in title), None)
+        if key is None:
+            raise SystemExit(f"Seção sem destino definido: {title!r}")
+        global_sections[key] = untitled(section)
 
     # --- enums: cada bloco para a tabela dona; produtos para o compartilhado
-    intro_enums, blocos = fatiar_h3(globais["enums"])
-    enums_da_tabela: dict[str, list[str]] = {}
-    compartilhados: list[str] = []
-    for titulo, bloco in blocos:
-        dono = dono_do_enum(titulo)
-        if dono is None:
-            compartilhados.append(f"### {titulo}\n\n{bloco}")
+    intro_enums, blocks = split_h3(global_sections["enums"])
+    table_enums: dict[str, list[str]] = {}
+    shared: list[str] = []
+    for title, block in blocks:
+        owner = enum_owner(title)
+        if owner is None:
+            shared.append(f"### {title}\n\n{block}")
         else:
-            if dono not in tabelas:
-                raise SystemExit(f"Enum {titulo!r} aponta para tabela inexistente {dono!r}")
-            enums_da_tabela.setdefault(dono, []).append(f"#### {titulo}\n\n{bloco}")
+            if owner not in tables:
+                raise SystemExit(f"Enum {title!r} aponta para tabela inexistente {owner!r}")
+            table_enums.setdefault(owner, []).append(f"#### {title}\n\n{block}")
 
-    for nome, conteudo in tabelas.items():
-        partes = [conteudo]
-        if nome in enums_da_tabela:
-            partes.append("### Valores possíveis (enums)\n\n" + "\n\n".join(enums_da_tabela[nome]))
-        (destino / f"{nome}.md").write_text("\n\n".join(partes) + "\n", encoding="utf-8")
+    for name, content in tables.items():
+        parts = [content]
+        if name in table_enums:
+            parts.append("### Valores possíveis (enums)\n\n" + "\n\n".join(table_enums[name]))
+        (destination / f"{name}.md").write_text("\n\n".join(parts) + "\n", encoding="utf-8")
 
     # --- relacionamentos (+ cenários de faturamento, que explicam um desses JOINs)
-    (destino / "_relacionamentos.md").write_text(
+    (destination / "_relacionamentos.md").write_text(
         "# Relacionamentos entre tabelas\n\n"
         "Só estas ligações são aceitas em `JOIN ... ON`; JOIN por qualquer outra "
         "coluna é rejeitado.\n\n"
-        f"{globais['relacionamentos']}\n\n"
+        f"{global_sections['relacionamentos']}\n\n"
         "## Cruzamento recebível × nota fiscal (configurações de pagamento e faturamento)\n\n"
-        f"{globais['faturamento']}\n",
+        f"{global_sections['faturamento']}\n",
         encoding="utf-8",
     )
 
     # --- regras transversais
-    multi_tenant = globais["multi_tenant"]
-    inicio_saida = multi_tenant.find("Além do filtro")
-    if inicio_saida < 0:
+    multi_tenant = global_sections["multi_tenant"]
+    output_start = multi_tenant.find("Além do filtro")
+    if output_start < 0:
         raise SystemExit("Não achei o parágrafo da coluna de grupo na saída.")
-    (destino / "_regras_gerais.md").write_text(
+    (destination / "_regras_gerais.md").write_text(
         "# Regras gerais do catálogo\n\n"
         "Valem para qualquer tabela. Colunas, aliases, partição, filtros padrão e "
         "enums de cada tabela estão no schema dela (`get_table_schema`).\n\n"
         "## Aliases em PT-BR\n\n"
-        f"{globais['aliases']}\n\n"
+        f"{global_sections['aliases']}\n\n"
         "## Filtro por grupo\n\n"
         "O filtro por grupo é obrigatório em toda query. A regra de cada tabela está na "
         "linha **Multi-tenant** do schema dela; query sem esse filtro é rejeitada.\n\n"
-        f"{multi_tenant[inicio_saida:].strip()}\n\n"
+        f"{multi_tenant[output_start:].strip()}\n\n"
         "## Licenças (separada × unificada)\n\n"
-        f"{globais['licencas']}\n\n"
+        f"{global_sections['licencas']}\n\n"
         "## Enums\n\n"
         "Cada arquivo de tabela termina com os valores possíveis das suas colunas "
         "(`### Valores possíveis (enums)`); os de produto, usados por várias tabelas, "
         f"ficam em `_enums_compartilhados.md`. {intro_enums}\n\n"
         "## Tipos de dados\n\n"
-        f"{globais['tipos']}\n",
+        f"{global_sections['tipos']}\n",
         encoding="utf-8",
     )
 
-    (destino / "_enums_compartilhados.md").write_text(
+    (destination / "_enums_compartilhados.md").write_text(
         "# Enums compartilhados\n\n"
         "Valores de colunas que existem em mais de uma tabela. A tool `get_table_schema` "
         "anexa cada bloco ao schema das tabelas que têm alguma das colunas citadas no "
         "título (depois de `coluna`/`colunas`, entre crases).\n\n"
-        + "\n\n".join(compartilhados)
+        + "\n\n".join(shared)
         + "\n",
         encoding="utf-8",
     )
 
-    print(f"{len(tabelas)} tabelas: {', '.join(sorted(tabelas))}")
-    print(f"{sum(len(v) for v in enums_da_tabela.values())} enums distribuídos, "
-          f"{len(compartilhados)} compartilhado(s)")
+    print(f"{len(tables)} tabelas: {', '.join(sorted(tables))}")
+    print(f"{sum(len(v) for v in table_enums.values())} enums distribuídos, "
+          f"{len(shared)} compartilhado(s)")
 
 
 if __name__ == "__main__":

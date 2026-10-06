@@ -1,5 +1,5 @@
 class GenplatProvider:
-    """Sem LLM de verdade: os testes usam o `ProviderEspiao` do conftest."""
+    """Sem LLM de verdade: os testes usam o `SpyProvider` do conftest."""
 
     def __init__(self, logger=None):
         self.logger = logger

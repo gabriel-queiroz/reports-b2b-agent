@@ -1,6 +1,6 @@
 """Prompts do agente, mantidos como templates .txt nesta pasta.
 
-Os placeholders ({dominios}, {documentacao_tabelas}, {exemplos}, ...) são
+Os placeholders ({domains}, {tables_documentation}, {examples}, ...) são
 preenchidos aqui no carregamento; o conteúdo editável fica todo nos arquivos
 .txt.
 """
@@ -11,9 +11,9 @@ from pathlib import Path
 _DIR = Path(__file__).parent
 
 
-def _carregar(nome: str) -> str:
+def _load(name: str) -> str:
     """Carrega um arquivo .txt de prompt."""
-    return (_DIR / f"{nome}.txt").read_text(encoding="utf-8")
+    return (_DIR / f"{name}.txt").read_text(encoding="utf-8")
 
 
 def few_shot() -> str:
@@ -22,10 +22,10 @@ def few_shot() -> str:
     Carregado cru (sem `str.format`): o conteúdo usa UUID de exemplo e não tem
     placeholders, evitando conflito de chaves com o template do usuário.
     """
-    return _carregar("few_shot")
+    return _load("few_shot")
 
 
-def agent_system_prompt(dominios: str, group_id: str = None) -> str:
+def agent_system_prompt(domains: str, group_id: str = None) -> str:
     """Retorna o prompt do sistema com dominios, group_id e current_date.
 
     Args:
@@ -34,31 +34,31 @@ def agent_system_prompt(dominios: str, group_id: str = None) -> str:
     """
     group_id_str = group_id or "{{group_id_não_fornecido}}"
     current_date = datetime.now().strftime("%Y-%m-%d")
-    return _carregar("agente").format(
-        dominios=dominios, group_id=group_id_str, data_atual=current_date
+    return _load("agente").format(
+        domains=domains, group_id=group_id_str, current_date=current_date
     )
 
 
 def sql_system_prompt(
-    restricao_group_id: str,
-    documentacao_tabelas: str,
+    group_id_restriction: str,
+    tables_documentation: str,
     group_id: str,
 ) -> str:
     """Retorna o prompt de sistema para geração de SQL."""
-    return _carregar("sql_system").format(
-        documentacao_tabelas=documentacao_tabelas,
-        restricao_group_id=restricao_group_id,
+    return _load("sql_system").format(
+        tables_documentation=tables_documentation,
+        group_id_restriction=group_id_restriction,
         group_id=group_id,
     )
 
 
 def sql_user_prompt(
-    dominio: str,
-    tabelas: str,
-    pergunta: str,
+    domain: str,
+    tables: str,
+    question: str,
     group_id: str,
-    campos_solicitados: str = "",
-    exemplos: str = "",
+    requested_fields: str = "",
+    examples: str = "",
 ) -> str:
     """Retorna o prompt do usuário para geração de SQL.
 
@@ -66,11 +66,11 @@ def sql_user_prompt(
         exemplos: conteúdo few-shot (pergunta -> SQL) injetado dentro de
             <exemplos> no template.
     """
-    return _carregar("sql_user").format(
-        dominio=dominio,
-        tabelas=tabelas,
-        pergunta=pergunta,
+    return _load("sql_user").format(
+        domain=domain,
+        tables=tables,
+        question=question,
         group_id=group_id,
-        campos_solicitados=campos_solicitados,
-        exemplos=exemplos,
+        requested_fields=requested_fields,
+        examples=examples,
     )

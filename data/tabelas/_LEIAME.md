@@ -26,4 +26,4 @@ Substitui o antigo `data/schema.md`. **Esta pasta é lida por código** (`catalo
 1. Criar `<nome_fisico>.md` seguindo o formato acima, com o próximo número de seção.
 2. Declarar os JOINs em `_relacionamentos.md`.
 3. Mapear o domínio em `TABLE_TO_DOMAIN` (`schema_extractor.py`).
-4. Rodar `tests/test_catalog.py` e `tests/test_tabelas.py`.
+4. Rodar `tests/test_catalog.py` e `tests/test_tables.py`.

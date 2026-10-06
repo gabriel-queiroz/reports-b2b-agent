@@ -38,7 +38,7 @@ from domain.agents.reports_b2b.catalog import (
     declared_joins_between,
     find_table,
     is_declared_join,
-    is_detalhe_column,
+    is_detail_column,
 )
 from domain.agents.reports_b2b.guardrails import validate_group_id
 
@@ -143,8 +143,8 @@ class RechargesAggregationError(SqlGuardError):
 
 # Nome curto da tabela de recargas e as medidas que não podem sair cruas no nível
 # empresa (têm que virar `SUM`).
-_RECARGAS = "ifood_benefits_recharges"
-_RECARGA_MEDIDAS = frozenset({"amount", "cashback_amount"})
+_RECHARGES = "ifood_benefits_recharges"
+_RECHARGE_MEASURES = frozenset({"amount", "cashback_amount"})
 
 
 def guard_query(sql: str, group_id: str) -> str:
@@ -298,9 +298,9 @@ def _assert_column_exists(path: str, tables: list[Table]) -> None:
                 f"WHERE, JOIN e GROUP BY use a coluna física `{real.name}`."
             )
 
-    onde = ", ".join(f"`{table.name}`" for table in tables)
+    where = ", ".join(f"`{table.name}`" for table in tables)
     raise ColumnNotFoundError(
-        f"A coluna `{path}` não existe em {onde}.{_suggestion(path, tables)}"
+        f"A coluna `{path}` não existe em {where}.{_suggestion(path, tables)}"
     )
 
 
@@ -374,20 +374,20 @@ def _check_join_keys(select: exp.Select) -> None:
 
 def _join_key_message(pairs: list[tuple[tuple[str, str], tuple[str, str]]]) -> str:
     (first_table, _), (second_table, _) = pairs[0]
-    usadas = "; ".join(
+    used = "; ".join(
         f"{left[0]}.{left[1]} = {right[0]}.{right[1]}" for left, right in pairs
     )
-    declaradas = declared_joins_between(first_table, second_table)
+    declared = declared_joins_between(first_table, second_table)
 
-    if declaradas:
+    if declared:
         return (
             f"O JOIN entre `{first_table}` e `{second_table}` usa uma chave que o "
-            f"catálogo não declara ({usadas}). O catálogo declara: "
-            f"{'; '.join(declaradas)}."
+            f"catálogo não declara ({used}). O catálogo declara: "
+            f"{'; '.join(declared)}."
         )
     return (
         f"O catálogo não declara ligação direta entre `{first_table}` e "
-        f"`{second_table}` — o JOIN usado ({usadas}) não existe no schema."
+        f"`{second_table}` — o JOIN usado ({used}) não existe no schema."
     )
 
 
@@ -505,10 +505,10 @@ def _check_filterable_columns(select: exp.Select) -> None:
             # em ao menos uma das tabelas visíveis. Se uma delas marcar a coluna
             # como não filtrável, bloqueia.
             for candidate in scope_tables:
-                catalogada = _find_column(candidate, path)
-                if catalogada is not None and not catalogada.filterable:
+                cataloged = _find_column(candidate, path)
+                if cataloged is not None and not cataloged.filterable:
                     raise ColumnNotFilterableError(
-                        f"A coluna `{candidate.name}.{catalogada.name}` é de saída "
+                        f"A coluna `{candidate.name}.{cataloged.name}` é de saída "
                         "e não pode ser usada como filtro no WHERE/JOIN ON."
                     )
 
@@ -548,7 +548,7 @@ def _check_recharges_aggregation(select: exp.Select) -> None:
         return
 
     aliases = _visible_aliases(select)
-    if _RECARGAS not in {table.name for table in aliases.values()}:
+    if _RECHARGES not in {table.name for table in aliases.values()}:
         return
 
     # granularidade de item presente em qualquer expressão da saída → medida crua ok
@@ -583,15 +583,15 @@ def _recharge_item_identity_columns() -> frozenset[str]:
 
     São o sinal de que a query é de item (uma linha por item), e não de empresa —
     neste caso `amount`/`cashback_amount` podem sair crus. Derivado do catálogo
-    (mesma fonte de `is_detalhe_column`), não hardcoded.
+    (mesma fonte de `is_detail_column`), não hardcoded.
     """
-    table = find_table(_RECARGAS)
+    table = find_table(_RECHARGES)
     if table is None:
         return frozenset()
     return frozenset(
         column.name.lower()
         for column in table.columns
-        if is_detalhe_column(column) and column.name.lower() not in _RECARGA_MEDIDAS
+        if is_detail_column(column) and column.name.lower() not in _RECHARGE_MEASURES
     )
 
 
@@ -599,14 +599,14 @@ def _output_mentions_recharge_identity(
     select: exp.Select, aliases: dict[str, Table]
 ) -> bool:
     """A saída menciona alguma coluna de identidade do item da recarga?"""
-    identidade = _recharge_item_identity_columns()
+    identity = _recharge_item_identity_columns()
     for item in select.expressions:
         for column in item.find_all(exp.Column):
             table, path = _resolve_column(column, aliases)
             if (
                 table is not None
-                and table.name == _RECARGAS
-                and path.lower() in identidade
+                and table.name == _RECHARGES
+                and path.lower() in identity
             ):
                 return True
     return False
@@ -616,13 +616,13 @@ def _is_recharge_measure(
     table: Table | None, path: str, aliases: dict[str, Table]
 ) -> bool:
     """A coluna é uma medida (`amount`/`cashback_amount`) da tabela de recargas?"""
-    if path.lower() not in _RECARGA_MEDIDAS:
+    if path.lower() not in _RECHARGE_MEASURES:
         return False
     if table is not None:
-        return table.name == _RECARGAS
+        return table.name == _RECHARGES
     # coluna sem qualificador: conta se a recarga está em escopo e tem a coluna
     return any(
-        t.name == _RECARGAS and path.lower() in t.column_names for t in aliases.values()
+        t.name == _RECHARGES and path.lower() in t.column_names for t in aliases.values()
     )
 
 
@@ -721,9 +721,9 @@ def _has_predicate(select: exp.Select, predicate: exp.EQ) -> bool:
     if where is None:
         return False
 
-    alvo = predicate.sql(dialect=DIALECT).lower()
+    target = predicate.sql(dialect=DIALECT).lower()
     return any(
-        conjunct.sql(dialect=DIALECT).lower() == alvo
+        conjunct.sql(dialect=DIALECT).lower() == target
         for conjunct in _top_level_conjuncts(where.this)
     )
 
@@ -741,9 +741,9 @@ def _top_level_conjuncts(condition: exp.Expression):
 
 def _missing_join_message(sources: list[tuple[Table, str]]) -> str:
     """Erro acionável: diz qual JOIN falta, com o texto do catálogo."""
-    pendentes = [table for table, _ in sources if table.tenant.strategy == JOIN]
-    if pendentes:
-        table = pendentes[0]
+    pending = [table for table, _ in sources if table.tenant.strategy == JOIN]
+    if pending:
+        table = pending[0]
         rule = table.tenant
         return (
             f"A tabela `{table.name}` não tem coluna de grupo: o mesmo SELECT "

@@ -7,7 +7,7 @@ Ajudar o usuário a consultar dados dos domínios listados em <dominios> e a ger
 </objective>
 
 <dominios>
-{dominios}
+{domains}
 </dominios>
 
 <fluxo>
@@ -56,7 +56,7 @@ Os domínios recargas e estorno_recarga têm campos em dois níveis. O nível da
 <dados_de_sessao>
 - Seu `group_id` de sessão é: `{group_id}`
 - O group_id é aplicado automaticamente ao SQL gerado; você não precisa passá-lo.
-- Data atual: `{data_atual}`. Use-a para interpretar períodos relativos ("esse ano", "esse mês", "esse trimestre").
+- Data atual: `{current_date}`. Use-a para interpretar períodos relativos ("esse ano", "esse mês", "esse trimestre").
 </dados_de_sessao>
 
 <chamada_da_ferramenta_execute_query>

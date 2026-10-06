@@ -1,7 +1,7 @@
 """Testes dos templates de prompt e da injeção de few-shot.
 
 Cobrem o que mudou na refatoração: arquivos .txt, CoT no `sql_system` e o
-parâmetro `exemplos` do `sql_user`.
+parâmetro `examples` do `sql_user`.
 """
 
 from domain.agents.reports_b2b.report_generator.prompts import (
@@ -10,52 +10,52 @@ from domain.agents.reports_b2b.report_generator.prompts import (
     sql_user_prompt,
 )
 
-GRUPO = "550e8400-e29b-41d4-a716-446655440000"
+GROUP = "550e8400-e29b-41d4-a716-446655440000"
 
 
-def test_few_shot_retorna_exemplos_pergunta_sql():
-    conteudo = few_shot()
+def test_few_shot_returns_question_sql_examples():
+    content = few_shot()
 
-    assert "<exemplo>" in conteudo
-    assert "<pergunta_exemplo>" in conteudo
-    assert "<sql>" in conteudo
-    assert "company_group_id" in conteudo
+    assert "<exemplo>" in content
+    assert "<pergunta_exemplo>" in content
+    assert "<sql>" in content
+    assert "company_group_id" in content
 
 
-def test_sql_user_prompt_injeta_exemplos():
+def test_sql_user_prompt_injects_examples():
     prompt = sql_user_prompt(
-        dominio="colaboradores",
-        tabelas="employee, companies",
-        pergunta="colaboradores ativos",
-        group_id=GRUPO,
-        campos_solicitados="Nome",
-        exemplos="<exemplo><sql>SELECT 1</sql></exemplo>",
+        domain="colaboradores",
+        tables="employee, companies",
+        question="colaboradores ativos",
+        group_id=GROUP,
+        requested_fields="Nome",
+        examples="<exemplo><sql>SELECT 1</sql></exemplo>",
     )
 
     assert "<exemplo><sql>SELECT 1</sql></exemplo>" in prompt
     assert "colaboradores ativos" in prompt
-    assert GRUPO in prompt
+    assert GROUP in prompt
 
 
-def test_sql_user_prompt_injeta_few_shot_real():
+def test_sql_user_prompt_injects_real_few_shot():
     prompt = sql_user_prompt(
-        dominio="recargas",
-        tabelas="ifood_benefits_recharges",
-        pergunta="recargas de julho",
-        group_id=GRUPO,
-        campos_solicitados="",
-        exemplos=few_shot(),
+        domain="recargas",
+        tables="ifood_benefits_recharges",
+        question="recargas de julho",
+        group_id=GROUP,
+        requested_fields="",
+        examples=few_shot(),
     )
 
     assert "<exemplo>" in prompt
     assert "<pergunta_exemplo>" in prompt
 
 
-def test_sql_system_prompt_contem_pensamento_cot():
+def test_sql_system_prompt_contains_cot_reasoning():
     prompt = sql_system_prompt(
-        restricao_group_id="filtre pelo grupo",
-        documentacao_tabelas="# doc",
-        group_id=GRUPO,
+        group_id_restriction="filtre pelo grupo",
+        tables_documentation="# doc",
+        group_id=GROUP,
     )
 
     assert "<pensamento>" in prompt

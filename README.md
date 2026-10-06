@@ -15,8 +15,8 @@ No projeto principal os imports `domain.agents.reports_b2b...` resolvem pelo pac
 
 ## Migração
 
-`scripts/dividir_schema.py` refaz a divisão a partir de um `schema.md` (migração única), caso o arquivo tenha mudado no projeto principal:
+`scripts/split_schema.py` refaz a divisão a partir de um `schema.md` (migração única), caso o arquivo tenha mudado no projeto principal:
 
 ```bash
-python scripts/dividir_schema.py caminho/para/schema.md data/tabelas
+python scripts/split_schema.py caminho/para/schema.md data/tabelas
 ```

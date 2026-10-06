@@ -36,11 +36,11 @@ def get_table_schema(table: str) -> str:
     multi-tenant, partição obrigatória, filtros padrão e os valores possíveis
     (enums) das colunas. Consulte antes de escrever SQL sobre a tabela.
     """
-    documento = table_doc(table)
-    if documento is None:
+    document = table_doc(table)
+    if document is None:
         logger.info("get_table_schema: tabela fora do catálogo: %r", table)
         return (
             f"A tabela '{table}' não está no catálogo. "
             f"Tabelas disponíveis: {', '.join(allowed_tables())}."
         )
-    return documento
+    return document

@@ -19,39 +19,39 @@ from domain.agents.reports_b2b.sql_guard import (
     guard_query,
 )
 
-GRUPO = "550e8400-e29b-41d4-a716-446655440000"
+GROUP = "550e8400-e29b-41d4-a716-446655440000"
 
 EMPLOYEE = "main.ifoodoffice_management_silver.employee"
 COMPANIES = "fintech_companies.companies"
-RECARGAS = "main.fintech_finance.ifood_benefits_recharges"
+RECHARGES = "main.fintech_finance.ifood_benefits_recharges"
 CHARGEBACK = "main.ifoodoffice_recharge_chargeback.chargeback"
 FIN_ACCOUNT = "main.ifood_benf_transaction_service.financial_account"
 FIN_TRANSACTION = "main.ifood_benf_transaction_service.financial_transaction"
 
 
 def guard(sql: str) -> str:
-    return guard_query(sql, GRUPO)
+    return guard_query(sql, GROUP)
 
 
-def filtro_no_topo(sql: str, coluna: str) -> bool:
+def top_level_filter(sql: str, column: str) -> bool:
     """O predicado está na conjunção de topo do WHERE deste SELECT?"""
     from domain.agents.reports_b2b.sql_guard import _top_level_conjuncts
     from sqlglot import exp
 
-    alvo = f"{coluna} = '{GRUPO}'".lower()
+    target = f"{column} = '{GROUP}'".lower()
     for select in sqlglot.parse_one(sql, dialect=DIALECT).find_all(exp.Select):
         where = select.args.get("where")
         if where is None:
             continue
         if any(
-            c.sql(dialect=DIALECT).lower() == alvo
+            c.sql(dialect=DIALECT).lower() == target
             for c in _top_level_conjuncts(where.this)
         ):
             return True
     return False
 
 
-def executavel(sql: str) -> bool:
+def executable(sql: str) -> bool:
     """O SQL devolvido volta a fazer parse — o bug do GROUP BY quebrava isto."""
     try:
         sqlglot.parse_one(sql, dialect=DIALECT)
@@ -63,7 +63,7 @@ def executavel(sql: str) -> bool:
 # ------------------------------------------------- bugs do injetor antigo --
 
 
-def test_filtro_entra_no_where_e_nao_depois_do_group_by():
+def test_filter_goes_into_where_not_after_group_by():
     """O `_inject_filter_in_query_with_where` colava o AND depois do GROUP BY."""
     sql = guard(
         f"SELECT c.social_name AS razao_social_empresa, "
@@ -75,12 +75,12 @@ def test_filtro_entra_no_where_e_nao_depois_do_group_by():
         f"LIMIT 1000"
     )
 
-    assert executavel(sql)
-    assert filtro_no_topo(sql, "c.company_group_id")
+    assert executable(sql)
+    assert top_level_filter(sql, "c.company_group_id")
     assert sql.index("WHERE") < sql.index("GROUP BY") < sql.index("LIMIT")
 
 
-def test_filtro_nao_cai_dentro_de_um_ramo_de_or():
+def test_filter_does_not_land_inside_or_branch():
     """`WHERE a OR b` + AND cru vira `a OR (b AND filtro)` — não filtra nada."""
     sql = guard(
         f"SELECT c.company_group_id AS company_group_id, e.email AS email "
@@ -90,29 +90,29 @@ def test_filtro_nao_cai_dentro_de_um_ramo_de_or():
         f"LIMIT 1000"
     )
 
-    assert filtro_no_topo(sql, "c.company_group_id")
+    assert top_level_filter(sql, "c.company_group_id")
     assert (
         "(e.deleted = FALSE OR e.person_id = '550e8400-e29b-41d4-a716-446655440001')"
         in sql
     )
 
 
-def test_filtro_dentro_de_or_nao_conta_como_filtro_valido():
+def test_filter_inside_or_does_not_count_as_valid_filter():
     """O regex aceitava o UUID em qualquer lugar do texto, inclusive num OR."""
     sql = guard(
         f"SELECT c.company_group_id AS company_group_id, e.email AS email "
         f"FROM {EMPLOYEE} e "
         f"INNER JOIN {COMPANIES} c ON e.company_id = c.company_id "
-        f"WHERE c.company_group_id = '{GRUPO}' OR e.person_id = '550e8400-e29b-41d4-a716-446655440001' "
+        f"WHERE c.company_group_id = '{GROUP}' OR e.person_id = '550e8400-e29b-41d4-a716-446655440001' "
         f"LIMIT 1000"
     )
 
     # o OR continua lá, mas agora dentro de um AND com o filtro real
-    assert filtro_no_topo(sql, "c.company_group_id")
-    assert sql.count(GRUPO) == 2
+    assert top_level_filter(sql, "c.company_group_id")
+    assert sql.count(GROUP) == 2
 
 
-def test_where_apenas_na_subquery_nao_deixa_o_escopo_externo_sem_filtro():
+def test_where_only_in_subquery_does_not_leave_outer_scope_unfiltered():
     sql = guard(
         f"SELECT x.company_group_id AS company_group_id, x.email AS email FROM ("
         f"  SELECT c.company_group_id, e.email FROM {EMPLOYEE} e"
@@ -122,11 +122,11 @@ def test_where_apenas_na_subquery_nao_deixa_o_escopo_externo_sem_filtro():
     )
 
     # o escopo que lê a tabela base é o de dentro — é lá que o filtro precisa estar
-    assert filtro_no_topo(sql, "c.company_group_id")
-    assert executavel(sql)
+    assert top_level_filter(sql, "c.company_group_id")
+    assert executable(sql)
 
 
-def test_predicado_nao_cai_no_on_do_left_join():
+def test_predicate_does_not_land_in_left_join_on():
     sql = guard(
         f"SELECT c.company_group_id AS company_group_id, e.email AS email "
         f"FROM {EMPLOYEE} e "
@@ -134,11 +134,11 @@ def test_predicado_nao_cai_no_on_do_left_join():
         f"LIMIT 1000"
     )
 
-    assert filtro_no_topo(sql, "c.company_group_id")
+    assert top_level_filter(sql, "c.company_group_id")
     assert "ON e.company_id = c.company_id AND" not in sql
 
 
-def test_join_sem_alias_usa_o_nome_da_tabela_e_nao_a_palavra_on():
+def test_join_without_alias_uses_table_name_not_on_keyword():
     """`_extract_companies_table_alias` devolvia `"ON"` neste caso."""
     sql = guard(
         f"SELECT companies.company_group_id AS company_group_id "
@@ -147,11 +147,11 @@ def test_join_sem_alias_usa_o_nome_da_tabela_e_nao_a_palavra_on():
         f"LIMIT 1000"
     )
 
-    assert filtro_no_topo(sql, "companies.company_group_id")
+    assert top_level_filter(sql, "companies.company_group_id")
     assert "ON.company_group_id" not in sql
 
 
-def test_join_com_condicao_sem_colunas_e_recusado():
+def test_join_with_condition_without_columns_is_rejected():
     """`ON 1 = 1` não liga tabela a tabela e não pode virar JOIN de catálogo."""
     with pytest.raises(JoinKeyError):
         guard(
@@ -162,7 +162,7 @@ def test_join_com_condicao_sem_colunas_e_recusado():
         )
 
 
-def test_cross_join_sem_chave_e_recusado():
+def test_cross_join_without_key_is_rejected():
     """CROSS JOIN não tem chave de catálogo e precisa ser rejeitado."""
     with pytest.raises(JoinKeyError):
         guard(
@@ -173,45 +173,45 @@ def test_cross_join_sem_chave_e_recusado():
         )
 
 
-def test_recargas_sem_filtro_de_grupo_recebe_o_filtro_do_struct():
+def test_recharges_without_group_filter_get_struct_filter():
     """Buraco conhecido: o domínio de recargas pulava a injeção por inteiro."""
     sql = guard(
         f"SELECT r.order_id AS id_recarga, r.company_group.id AS company_group_id "
-        f"FROM {RECARGAS} r "
+        f"FROM {RECHARGES} r "
         f"WHERE r.update_month >= '2026-07' "
         f"LIMIT 1000"
     )
 
-    assert filtro_no_topo(sql, "r.company_group.id")
+    assert top_level_filter(sql, "r.company_group.id")
 
 
 # --------------------------------------------- agregação de medidas na recarga --
 
 
-def test_recarga_amount_cru_sem_order_item_id_e_recusado():
+def test_raw_recharge_amount_without_order_item_id_is_rejected():
     """No nível empresa, `amount` cru (sem SUM) é campo de item — precisa agregar."""
     with pytest.raises(RechargesAggregationError):
         guard(
             f"SELECT r.company_group.id AS company_group_id, r.order_id AS id_recarga, "
             f"r.amount AS valor_item_recarga "
-            f"FROM {RECARGAS} r WHERE r.order_status = 'DISTRIBUTION_COMPLETE'"
+            f"FROM {RECHARGES} r WHERE r.order_status = 'DISTRIBUTION_COMPLETE'"
         )
 
 
-def test_recarga_cashback_cru_sem_order_item_id_e_recusado():
+def test_raw_recharge_cashback_without_order_item_id_is_rejected():
     with pytest.raises(RechargesAggregationError):
         guard(
             f"SELECT r.company_group.id AS company_group_id, r.order_id AS id_recarga, "
             f"r.cashback_amount AS valor_cashback_item "
-            f"FROM {RECARGAS} r"
+            f"FROM {RECHARGES} r"
         )
 
 
-def test_recarga_sum_mais_group_by_e_aceito():
+def test_recharge_sum_with_group_by_is_accepted():
     sql = guard(
         f"SELECT r.company_group.id AS company_group_id, r.order_id AS id_recarga, "
         f"SUM(r.amount) AS valor_recarga, SUM(r.cashback_amount) AS valor_cashback "
-        f"FROM {RECARGAS} r "
+        f"FROM {RECHARGES} r "
         f"WHERE r.order_status = 'DISTRIBUTION_COMPLETE' "
         f"GROUP BY r.company_group.id, r.order_id"
     )
@@ -220,30 +220,30 @@ def test_recarga_sum_mais_group_by_e_aceito():
     assert "GROUP BY" in sql
 
 
-def test_recarga_item_level_com_order_item_id_e_aceito():
+def test_recharge_item_level_with_order_item_id_is_accepted():
     """Com `order_item_id` na saída, é granularidade de item — amount cru é legítimo."""
     sql = guard(
         f"SELECT r.company_group.id AS company_group_id, r.order_item_id AS id_item_recarga, "
         f"r.order_id AS id_recarga, r.amount AS valor_item_recarga "
-        f"FROM {RECARGAS} r"
+        f"FROM {RECHARGES} r"
     )
 
     assert "r.amount" in sql
 
 
-def test_recarga_amount_cru_dentro_de_split_com_order_item_id_e_aceito():
+def test_raw_recharge_amount_in_split_with_order_item_id_is_accepted():
     """`order_item_id` dentro de função (split) também marca granularidade de item."""
     sql = guard(
         f"SELECT r.company_group.id AS company_group_id, "
         f"CAST(CONCAT('ID_', split(r.order_item_id, '-')[3]) AS STRING) AS id_item, "
         f"r.amount AS valor_item_recarga "
-        f"FROM {RECARGAS} r"
+        f"FROM {RECHARGES} r"
     )
 
     assert "r.amount" in sql
 
 
-def test_amount_de_outra_tabela_cru_nao_e_sinalizado():
+def test_raw_amount_from_other_table_is_not_flagged():
     """A regra é só da recarga: `receivable_assets.amount` cru segue passando."""
     sql = guard(
         "SELECT ra.company_group_id AS company_group_id, ra.amount AS valor_pagamento "
@@ -265,7 +265,7 @@ def test_amount_de_outra_tabela_cru_nao_e_sinalizado():
         f"DELETE FROM {EMPLOYEE}",
     ],
 )
-def test_dois_statements_sao_recusados(sql):
+def test_two_statements_are_rejected(sql):
     with pytest.raises(StatementNotAllowedError):
         guard(sql)
 
@@ -280,17 +280,17 @@ def test_dois_statements_sao_recusados(sql):
         f"CREATE TABLE x AS SELECT * FROM {EMPLOYEE}",
     ],
 )
-def test_dml_e_ddl_sao_recusados(sql):
+def test_dml_and_ddl_are_rejected(sql):
     with pytest.raises(StatementNotAllowedError):
         guard(sql)
 
 
-def test_sql_invalido_e_recusado_com_erro_de_sintaxe():
+def test_invalid_sql_is_rejected_with_syntax_error():
     with pytest.raises(SqlSyntaxError):
         guard("SELEC company_group_id FROM WHERE")
 
 
-def test_comentario_nao_sobrevive_ao_guard():
+def test_comment_does_not_survive_guard():
     """O SQL entregue é regerado da AST; comentário do LLM não viaja junto."""
     sql = guard(
         f"SELECT c.company_group_id AS company_group_id -- comentário\n"
@@ -300,7 +300,7 @@ def test_comentario_nao_sobrevive_ao_guard():
     assert "--" not in sql and "/*" not in sql
 
 
-def test_sql_devolvido_vem_da_ast_nao_da_string_do_llm():
+def test_returned_sql_comes_from_ast_not_llm_string():
     sql = guard(
         f"select   c.company_group_id   as company_group_id\n\n"
         f"from {COMPANIES} c   where c.deleted = false   limit 10"
@@ -313,14 +313,14 @@ def test_sql_devolvido_vem_da_ast_nao_da_string_do_llm():
 # ----------------------------------------------------------------- LIMIT --
 
 
-def test_query_sem_limit_continua_sem_limit():
+def test_query_without_limit_stays_without_limit():
     """Não há teto: o relatório traz o recorte inteiro e o guard não injeta nada."""
     sql = guard(f"SELECT c.company_group_id AS company_group_id FROM {COMPANIES} c")
 
     assert "LIMIT" not in sql.upper()
 
 
-def test_limit_pedido_pelo_usuario_e_preservado():
+def test_user_requested_limit_is_kept():
     """ "as 10 maiores" continua sendo uma pergunta legítima."""
     sql = guard(
         f"SELECT c.company_group_id AS company_group_id FROM {COMPANIES} c LIMIT 10"
@@ -329,7 +329,7 @@ def test_limit_pedido_pelo_usuario_e_preservado():
     assert sql.endswith("LIMIT 10")
 
 
-def test_limit_grande_nao_e_reduzido():
+def test_large_limit_is_not_reduced():
     sql = guard(
         f"SELECT c.company_group_id AS company_group_id FROM {COMPANIES} c LIMIT 50000"
     )
@@ -340,7 +340,7 @@ def test_limit_grande_nao_e_reduzido():
 # ------------------------------------------------------------- allowlist --
 
 
-def test_tabela_fora_do_catalogo_e_recusada():
+def test_table_outside_catalog_is_rejected():
     with pytest.raises(TableNotAllowedError, match="information_schema.tables"):
         guard(
             "SELECT t.company_group_id AS company_group_id "
@@ -348,7 +348,7 @@ def test_tabela_fora_do_catalogo_e_recusada():
         )
 
 
-def test_chargeback_employee_sem_join_com_chargeback_e_recusada():
+def test_chargeback_employee_without_chargeback_join_is_rejected():
     """`chargeback_employee` só filtra por grupo via JOIN com `chargeback`."""
     with pytest.raises(TenantFilterError):
         guard(
@@ -358,14 +358,14 @@ def test_chargeback_employee_sem_join_com_chargeback_e_recusada():
         )
 
 
-def test_nome_curto_de_tabela_permitida_passa():
+def test_short_name_of_allowed_table_passes():
     sql = guard(
         "SELECT c.company_group_id AS company_group_id FROM companies c LIMIT 10"
     )
-    assert filtro_no_topo(sql, "c.company_group_id")
+    assert top_level_filter(sql, "c.company_group_id")
 
 
-def test_tabela_homonima_em_outro_catalogo_e_recusada():
+def test_same_name_table_in_other_catalog_is_rejected():
     with pytest.raises(TableNotAllowedError):
         guard(
             "SELECT e.company_group_id AS company_group_id "
@@ -373,7 +373,7 @@ def test_tabela_homonima_em_outro_catalogo_e_recusada():
         )
 
 
-def test_tabela_dentro_de_cte_tambem_passa_pela_allowlist():
+def test_table_inside_cte_also_goes_through_allowlist():
     with pytest.raises(TableNotAllowedError):
         guard(
             "WITH x AS (SELECT * FROM information_schema.tables) "
@@ -384,7 +384,7 @@ def test_tabela_dentro_de_cte_tambem_passa_pela_allowlist():
 # ------------------------------------------------- JOIN obrigatório / tenant --
 
 
-def test_employee_sozinho_exige_join_com_companies():
+def test_employee_alone_requires_companies_join():
     with pytest.raises(TenantFilterError, match="employee"):
         guard(
             f"SELECT e.email AS email, e.company_id AS company_group_id "
@@ -392,7 +392,7 @@ def test_employee_sozinho_exige_join_com_companies():
         )
 
 
-def test_financial_transaction_sozinha_exige_join_com_financial_account():
+def test_financial_transaction_alone_requires_financial_account_join():
     with pytest.raises(TenantFilterError, match="financial_account"):
         guard(
             f"SELECT ft.id AS id, ft.account_id AS company_group_id "
@@ -400,7 +400,7 @@ def test_financial_transaction_sozinha_exige_join_com_financial_account():
         )
 
 
-def test_financial_transaction_com_join_filtra_pela_conta():
+def test_financial_transaction_with_join_filters_by_account():
     sql = guard(
         f"SELECT ft.id AS id_transacao, fa.group_id AS company_group_id "
         f"FROM {FIN_TRANSACTION} ft "
@@ -408,48 +408,48 @@ def test_financial_transaction_com_join_filtra_pela_conta():
         f"LIMIT 1000"
     )
 
-    assert filtro_no_topo(sql, "fa.group_id")
+    assert top_level_filter(sql, "fa.group_id")
 
 
-def test_chargeback_filtra_por_group_id_direto_sem_join():
+def test_chargeback_filters_by_group_id_directly_without_join():
     sql = guard(
         f"SELECT ch.id AS id_estorno, ch.group_id AS company_group_id "
         f"FROM {CHARGEBACK} ch LIMIT 1000"
     )
 
-    assert filtro_no_topo(sql, "ch.group_id")
+    assert top_level_filter(sql, "ch.group_id")
 
 
-def test_filtro_correto_do_llm_e_preservado_sem_duplicar():
+def test_correct_llm_filter_is_kept_without_duplication():
     sql = guard(
         f"SELECT ch.id AS id_estorno, ch.group_id AS company_group_id "
-        f"FROM {CHARGEBACK} ch WHERE ch.group_id = '{GRUPO}' LIMIT 1000"
+        f"FROM {CHARGEBACK} ch WHERE ch.group_id = '{GROUP}' LIMIT 1000"
     )
 
-    assert sql.count(GRUPO) == 1
+    assert sql.count(GROUP) == 1
 
 
-def test_guard_e_idempotente():
+def test_guard_is_idempotent():
     sql = (
         f"SELECT c.company_group_id AS company_group_id FROM {COMPANIES} c "
         f"WHERE c.deleted = false LIMIT 10"
     )
-    uma_vez = guard(sql)
-    assert guard(uma_vez) == uma_vez
+    once = guard(sql)
+    assert guard(once) == once
 
 
-def test_union_filtra_os_dois_ramos():
+def test_union_filters_both_branches():
     sql = guard(
         f"SELECT ch.group_id AS company_group_id FROM {CHARGEBACK} ch "
         f"UNION ALL "
         f"SELECT c.company_group_id AS company_group_id FROM {COMPANIES} c"
     )
 
-    assert filtro_no_topo(sql, "ch.group_id")
-    assert filtro_no_topo(sql, "c.company_group_id")
+    assert top_level_filter(sql, "ch.group_id")
+    assert top_level_filter(sql, "c.company_group_id")
 
 
-def test_group_id_invalido_nao_gera_sql():
+def test_invalid_group_id_generates_no_sql():
     with pytest.raises(InvalidGroupIdError):
         guard_query(
             f"SELECT c.company_group_id AS company_group_id FROM {COMPANIES} c",
@@ -460,21 +460,21 @@ def test_group_id_invalido_nao_gera_sql():
 # ------------------------------------------------ coluna de saída do grupo --
 
 
-def test_select_sem_company_group_id_e_recusado():
+def test_select_without_company_group_id_is_rejected():
     with pytest.raises(OutputColumnError):
         guard(
             f"SELECT c.social_name AS razao_social_empresa FROM {COMPANIES} c LIMIT 10"
         )
 
 
-def test_literal_nao_serve_como_coluna_de_grupo():
+def test_literal_does_not_count_as_group_column():
     with pytest.raises(OutputColumnError):
         guard(
-            f"SELECT '{GRUPO}' AS company_group_id, c.social_name AS razao_social "
+            f"SELECT '{GROUP}' AS company_group_id, c.social_name AS razao_social "
             f"FROM {COMPANIES} c LIMIT 10"
         )
 
 
-def test_coluna_sem_alias_ja_sai_com_o_nome_certo():
+def test_column_without_alias_already_has_right_name():
     sql = guard(f"SELECT c.company_group_id FROM {COMPANIES} c LIMIT 10")
-    assert filtro_no_topo(sql, "c.company_group_id")
+    assert top_level_filter(sql, "c.company_group_id")

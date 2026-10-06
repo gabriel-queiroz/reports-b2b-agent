@@ -14,112 +14,112 @@ from domain.agents.reports_b2b.report_generator.tools.generate_query_tool import
 )
 from domain.agents.reports_b2b.sql_guard import AliasAsColumnError, SqlGuardError
 
-GRUPO = "550e8400-e29b-41d4-a716-446655440000"
+GROUP = "550e8400-e29b-41d4-a716-446655440000"
 
-SQL_BOM = (
+GOOD_SQL = (
     "SELECT ch.id AS id_estorno, ch.group_id AS company_group_id "
     "FROM main.ifoodoffice_recharge_chargeback.chargeback ch LIMIT 1000"
 )
 
 # usa o Alias PT-BR como se fosse coluna física — erro clássico do LLM
-SQL_COM_ALIAS_ERRADO = (
+SQL_WITH_WRONG_ALIAS = (
     "SELECT ch.id AS id_estorno, ch.group_id AS company_group_id "
     "FROM main.ifoodoffice_recharge_chargeback.chargeback ch "
     "WHERE ch.id_estorno = 'x' LIMIT 1000"
 )
 
 
-def gerar(provider):
+def generate(provider):
     return asyncio.run(
-        _generate_sql_internal("estornos de julho", "estorno_recarga", GRUPO, provider)
+        _generate_sql_internal("estornos de julho", "estorno_recarga", GROUP, provider)
     )
 
 
-def test_erro_do_guard_volta_como_mensagem_para_o_llm(provider_factory):
-    provider = provider_factory(SQL_COM_ALIAS_ERRADO, SQL_BOM)
+def test_guard_error_returns_as_message_to_llm(provider_factory):
+    provider = provider_factory(SQL_WITH_WRONG_ALIAS, GOOD_SQL)
 
-    sql = gerar(provider)
+    sql = generate(provider)
 
-    assert len(provider.chamadas) == 2, "não houve segunda tentativa"
+    assert len(provider.calls) == 2, "não houve segunda tentativa"
 
-    correcao = provider.prompt_do_usuario(chamada=1)
-    assert "REJEITADA" in correcao
-    assert "id_estorno" in correcao  # o erro nomeia a coluna
-    assert "ch.id_estorno = 'x'" in correcao  # e a query rejeitada vai junto
-    assert "AliasAsColumnError" in correcao
+    correction = provider.user_prompt(call=1)
+    assert "REJEITADA" in correction
+    assert "id_estorno" in correction  # o erro nomeia a coluna
+    assert "ch.id_estorno = 'x'" in correction  # e a query rejeitada vai junto
+    assert "AliasAsColumnError" in correction
 
     assert "id_estorno = 'x'" not in sql
 
 
-def test_segunda_tentativa_mantem_o_prompt_original(provider_factory):
+def test_second_attempt_keeps_original_prompt(provider_factory):
     """A correção é acrescentada à conversa, não substitui o prompt."""
-    provider = provider_factory(SQL_COM_ALIAS_ERRADO, SQL_BOM)
+    provider = provider_factory(SQL_WITH_WRONG_ALIAS, GOOD_SQL)
 
-    gerar(provider)
+    generate(provider)
 
-    primeira, segunda = provider.chamadas
-    assert segunda[: len(primeira)] == primeira
-    assert len(segunda) == len(primeira) + 1
+    first, second = provider.calls
+    assert second[: len(first)] == first
+    assert len(second) == len(first) + 1
 
 
-def test_prompt_identico_nao_e_mais_reenviado(provider_factory):
+def test_identical_prompt_is_not_resent(provider_factory):
     """O bug: as duas chamadas saíam exatamente iguais."""
-    provider = provider_factory(SQL_COM_ALIAS_ERRADO, SQL_BOM)
+    provider = provider_factory(SQL_WITH_WRONG_ALIAS, GOOD_SQL)
 
-    gerar(provider)
+    generate(provider)
 
-    assert provider.chamadas[0] != provider.chamadas[1]
+    assert provider.calls[0] != provider.calls[1]
 
 
-def test_erro_persistente_levanta_depois_das_tentativas(provider_factory):
-    provider = provider_factory(SQL_COM_ALIAS_ERRADO)
+def test_persistent_error_raises_after_attempts(provider_factory):
+    provider = provider_factory(SQL_WITH_WRONG_ALIAS)
 
     with pytest.raises(AliasAsColumnError):
-        gerar(provider)
+        generate(provider)
 
-    assert len(provider.chamadas) == MAX_SQL_ATTEMPTS
+    assert len(provider.calls) == MAX_SQL_ATTEMPTS
 
 
-def test_todas_as_rejeicoes_passam_pelo_mesmo_caminho_de_retry(provider_factory):
+def test_all_rejections_go_through_same_retry_path(provider_factory):
     """Antes, o JOIN obrigatório levantava sem retry e as outras tentavam duas vezes."""
-    sem_join = (
+    without_join = (
         "SELECT e.email AS email, e.company_id AS company_group_id "
         "FROM main.ifoodoffice_management_silver.employee e LIMIT 1000"
     )
-    provider = provider_factory(sem_join)
+    provider = provider_factory(without_join)
 
     with pytest.raises(SqlGuardError):
-        gerar(provider)
+        generate(provider)
 
-    assert len(provider.chamadas) == MAX_SQL_ATTEMPTS
+    assert len(provider.calls) == MAX_SQL_ATTEMPTS
 
 
-def test_llm_de_sql_e_deterministico_e_com_folga_de_tokens(provider_factory):
+def test_sql_llm_is_deterministic_with_token_headroom(provider_factory):
     """`temperature=0.2` sorteava a query; `max_tokens=1024` truncava o SQL."""
-    provider = provider_factory(SQL_BOM)
+    provider = provider_factory(GOOD_SQL)
 
-    gerar(provider)
+    generate(provider)
 
-    assert provider.parametros_llm["temperature"] == 0
-    assert provider.parametros_llm["max_tokens"] >= 4096
-
-
-def test_sql_valido_na_primeira_nao_gasta_tentativa(provider_factory):
-    provider = provider_factory(SQL_BOM)
-
-    sql = gerar(provider)
-
-    assert len(provider.chamadas) == 1
-    assert GRUPO in sql
+    assert provider.llm_params["temperature"] == 0
+    assert provider.llm_params["max_tokens"] >= 4096
 
 
-def test_few_shot_e_injetado_no_prompt_do_usuario(provider_factory):
-    provider = provider_factory(SQL_BOM)
+def test_valid_sql_on_first_try_uses_no_retry(provider_factory):
+    provider = provider_factory(GOOD_SQL)
 
-    gerar(provider)
+    sql = generate(provider)
 
-    prompt_usuario = provider.prompt_do_usuario(chamada=0)
+    assert len(provider.calls) == 1
+    assert GROUP in sql
 
-    assert "<exemplos>" in prompt_usuario
-    assert "<exemplo>" in prompt_usuario
-    assert "company_group_id" in prompt_usuario
+
+def test_few_shot_is_injected_in_user_prompt(provider_factory):
+    provider = provider_factory(GOOD_SQL)
+
+    generate(provider)
+
+    user_prompt = provider.user_prompt(call=0)
+
+    assert "<exemplos>" in user_prompt
+    assert "<exemplo>" in user_prompt
+    assert "company_group_id" in user_prompt

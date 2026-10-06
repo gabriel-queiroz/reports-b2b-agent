@@ -1,92 +1,92 @@
 """Fase 5 — `list_fields` monta a lista do catálogo, em vez de despejar o arquivo."""
 
 import pytest
-from domain.agents.reports_b2b.catalog import find_table, load_catalog, tabelas_dir
+from domain.agents.reports_b2b.catalog import find_table, load_catalog, tables_dir
 from domain.agents.reports_b2b.schema_extractor import extract_tables_by_domain
 from domain.agents.reports_b2b.tools.list_fields import list_fields
 
-DOMINIOS = ["colaboradores", "recargas", "financeiro", "estorno_recarga"]
+DOMAINS = ["colaboradores", "recargas", "financeiro", "estorno_recarga"]
 
 
-def listar(dominio: str) -> str:
-    return list_fields.func(dominio)
+def list_tables(domain: str) -> str:
+    return list_fields.func(domain)
 
 
-@pytest.mark.parametrize("dominio", DOMINIOS)
-def test_resposta_e_a_lista_de_campos_e_nao_o_schema_inteiro(dominio):
-    saida = listar(dominio)
+@pytest.mark.parametrize("domain", DOMAINS)
+def test_response_is_field_list_not_whole_schema(domain):
+    output = list_tables(domain)
     schema = "".join(
-        arquivo.read_text(encoding="utf-8") for arquivo in tabelas_dir().glob("*.md")
+        file.read_text(encoding="utf-8") for file in tables_dir().glob("*.md")
     )
 
-    assert len(saida) < len(schema) / 10
-    assert "<schema_documentation>" not in saida
-    assert "**Local**" not in saida
+    assert len(output) < len(schema) / 10
+    assert "<schema_documentation>" not in output
+    assert "**Local**" not in output
 
 
-@pytest.mark.parametrize("dominio", DOMINIOS)
-def test_usa_a_coluna_exibicao_e_nao_o_alias_tecnico(dominio):
-    saida = listar(dominio)
+@pytest.mark.parametrize("domain", DOMAINS)
+def test_uses_display_column_not_technical_alias(domain):
+    output = list_tables(domain)
 
-    assert "- Razão Social" in saida
-    assert "data_criacao" not in saida
-    assert "company_group_id" not in saida
+    assert "- Razão Social" in output
+    assert "data_criacao" not in output
+    assert "company_group_id" not in output
 
 
-def test_financeiro_inclui_conta_e_transacao_financeira():
+def test_financial_includes_account_and_transaction():
     """`DOMAIN_MARKERS["financeiro"]` não citava nenhuma das duas."""
-    saida = listar("financeiro")
+    output = list_tables("financeiro")
 
-    assert "Financial Account" in saida
-    assert "Financial Transaction" in saida
-    assert "Company Tax Invoice" in saida
-    assert "Receivable Assets" in saida
+    assert "Financial Account" in output
+    assert "Financial Transaction" in output
+    assert "Company Tax Invoice" in output
+    assert "Receivable Assets" in output
 
 
-def test_estorno_recarga_inclui_chargebacks():
+def test_recharge_chargeback_includes_chargebacks():
     """Estorno de recarga é domínio independente — não entra em recargas."""
-    saida = listar("estorno_recarga")
+    output = list_tables("estorno_recarga")
 
-    assert "Chargeback (Estornos)" in saida
-    assert "Chargeback Employee (Estorno por Colaborador)" in saida
-    assert "Chargeback (Estornos)" not in listar("recargas")
-
-
-def test_colaboradores_oferece_saida_mas_nao_oferece_person_id_como_campo():
-    saida = listar("colaboradores")
-
-    assert "Nome" in saida
-    assert "Email" in saida
-    assert "CPF" in saida
-    assert "ID Usuário iFB" not in saida
+    assert "Chargeback (Estornos)" in output
+    assert "Chargeback Employee (Estorno por Colaborador)" in output
+    assert "Chargeback (Estornos)" not in list_tables("recargas")
 
 
-def test_struct_inteiro_nao_e_oferecido_como_campo():
+def test_employees_offers_output_but_not_person_id_as_field():
+    output = list_tables("colaboradores")
+
+    assert "Nome" in output
+    assert "Email" in output
+    assert "CPF" in output
+    assert "ID Usuário iFB" not in output
+
+
+def test_whole_struct_is_not_offered_as_field():
     """O catálogo é explícito: nunca selecionar o struct inteiro."""
-    recargas = load_catalog()["ifood_benefits_recharges"]
-    structs = [c for c in recargas.columns if c.type.upper() == "STRUCT"]
+    recharges = load_catalog()["ifood_benefits_recharges"]
+    structs = [c for c in recharges.columns if c.type.upper() == "STRUCT"]
     assert structs, "o catálogo deveria documentar structs nesta tabela"
 
-    oferecidos = listar("recargas").count("\n- ")
-    catalogados = sum(
+    offered = list_tables("recargas").count("\n- ")
+    cataloged = sum(
         1
-        for caminho in extract_tables_by_domain()["recargas"]
-        for coluna in find_table(caminho).columns
-        if coluna.display and coluna.type.upper() != "STRUCT"
+        for table_path in extract_tables_by_domain()["recargas"]
+        for column in find_table(table_path).columns
+        if column.display and column.type.upper() != "STRUCT"
     )
 
-    assert oferecidos == catalogados
+    assert offered == cataloged
 
 
-def test_recargas_lista_agrupado_por_recarga_e_item():
-    saida = listar("recargas")
+def test_recharges_listed_grouped_by_recharge_and_item():
+    output = list_tables("recargas")
 
-    assert "**Recarga (granularidade de empresa)**" in saida
-    assert "**Detalhes da Recarga (granularidade de colaborador)**" in saida
-    assert saida.index("**Recarga (granularidade de empresa)**") < saida.index(
+    assert "**Recarga (granularidade de empresa)**" in output
+    assert "**Detalhes da Recarga (granularidade de colaborador)**" in output
+    assert output.index("**Recarga (granularidade de empresa)**") < output.index(
         "**Detalhes da Recarga (granularidade de colaborador)**"
     )
 
 
-def test_dominio_sem_catalogo_responde_sem_estourar():
-    assert "não há domínio" in listar("inexistente").lower()
+def test_domain_without_catalog_responds_without_crashing():
+    assert "não há domínio" in list_tables("inexistente").lower()

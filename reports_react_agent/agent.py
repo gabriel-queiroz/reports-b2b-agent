@@ -37,10 +37,10 @@ class ReportsB2bReactAgent(BaseAgent):
 
         # Descrição dos domínios derivada do catálogo (data/tabelas/), não mais copiada
         # à mão aqui.
-        self.dominios_text = build_domains_text()
+        self.domains_text = build_domains_text()
 
         # Build system prompt with domains (group_id will be injected during __call__)
-        system_prompt = agent_system_prompt(dominios=self.dominios_text, group_id=None)
+        system_prompt = agent_system_prompt(domains=self.domains_text, group_id=None)
 
         super().__init__(
             name="reports_b2b_react",
@@ -64,7 +64,7 @@ class ReportsB2bReactAgent(BaseAgent):
         """
         group_id = state.get("metadata", {}).get("group_id") or "{group_id_not_set}"
         return agent_system_prompt(
-            dominios=self.dominios_text,
+            domains=self.domains_text,
             group_id=group_id,
         )
 

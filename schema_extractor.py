@@ -9,13 +9,13 @@ import re
 from typing import Dict, List
 
 from domain.agents.reports_b2b.catalog import (
-    RELACIONAMENTOS,
+    RELATIONSHIPS,
     Column,
     Table,
     find_table,
-    is_detalhe_column,
+    is_detail_column,
     load_catalog,
-    tabelas_dir,
+    tables_dir,
     table_file,
 )
 from domain.agents.reports_b2b.guardrails import InvalidDesiredFieldsError
@@ -125,7 +125,7 @@ def build_domains_text() -> str:
 
 
 # Colunas físicas que são filtro/controle, não saída de relatório.
-_COLUNAS_DE_FILTRO = {"deleted", "test", "test_mode"}
+_FILTER_COLUMNS = {"deleted", "test", "test_mode"}
 
 # A tabela `companies` é transversal (ponte do filtro multi-tenant e fonte de
 # CNPJ/razão social quando a tabela consultada não tem campos próprios). Ela não
@@ -136,7 +136,7 @@ _COMPANIES = "companies"
 # **medida**: entram no SELECT como `SUM(coluna)` e o alias é o agregado (não o
 # alias PT-BR do item). Só são devolvidos no "all" por causa desta agregação — os
 # demais campos de item (identidade: order_item_id, product_key, ...) ficam fora.
-_MEDIDAS_POR_TABELA: dict[str, dict[str, str]] = {
+_MEASURES_BY_TABLE: dict[str, dict[str, str]] = {
     "ifood_benefits_recharges": {
         "amount": "valor_recarga",
         "cashback_amount": "valor_cashback",
@@ -170,19 +170,19 @@ def _is_reportable_column(column: Column) -> bool:
         return False
     if column.type.upper() == "STRUCT":
         return False
-    if column.name.split(".")[-1].lower() in _COLUNAS_DE_FILTRO:
+    if column.name.split(".")[-1].lower() in _FILTER_COLUMNS:
         return False
     return True
 
 
-def _is_medida(table: Table, column: Column) -> bool:
+def _is_measure(table: Table, column: Column) -> bool:
     """A coluna é uma medida de item que, no nível empresa, entra como `SUM`."""
-    return column.name in _MEDIDAS_POR_TABELA.get(table.name, {})
+    return column.name in _MEASURES_BY_TABLE.get(table.name, {})
 
 
-def _alias_medida(table: Table, column: Column) -> str:
+def _measure_alias(table: Table, column: Column) -> str:
     """Alias PT-BR agregado da medida (`valor_recarga`), não o do item cru."""
-    return _MEDIDAS_POR_TABELA[table.name][column.name]
+    return _MEASURES_BY_TABLE[table.name][column.name]
 
 
 def resolve_desired_fields(
@@ -218,7 +218,7 @@ def resolve_desired_fields(
             pair
             for pair in available
             if pair[0].name != _COMPANIES
-            and (not is_detalhe_column(pair[1]) or _is_medida(pair[0], pair[1]))
+            and (not is_detail_column(pair[1]) or _is_measure(pair[0], pair[1]))
         ]
 
     text = re.sub(r"\s+e\s+", ",", text, flags=re.IGNORECASE)
@@ -265,7 +265,7 @@ def resolve_desired_fields(
     return selected
 
 
-def build_campos_solicitados_block(domain: str, desired_fields: str) -> str:
+def build_requested_fields_block(domain: str, desired_fields: str) -> str:
     """Monta o bloco `<campos_solicitados>` que restringe o SQL aos campos pedidos.
 
     Fixa **quais** campos entram e, para medidas (campos de item no nível empresa),
@@ -276,28 +276,28 @@ def build_campos_solicitados_block(domain: str, desired_fields: str) -> str:
     """
     selected = resolve_desired_fields(domain, desired_fields)
 
-    detalhe = any(
-        is_detalhe_column(column) and not _is_medida(table, column)
+    detail = any(
+        is_detail_column(column) and not _is_measure(table, column)
         for table, column in selected
     )
 
     lines = []
-    medidas: list[str] = []
+    measures: list[str] = []
     for table, column in selected:
         alias = column.alias or column.name.split(".")[-1]
-        if _is_medida(table, column) and not detalhe:
-            alias = _alias_medida(table, column)
+        if _is_measure(table, column) and not detail:
+            alias = _measure_alias(table, column)
             lines.append(
                 f"- `SUM({table.name}.{column.name})` AS `{alias}` ({column.display})"
             )
-            medidas.append(alias)
+            measures.append(alias)
         else:
             lines.append(
                 f"- `{table.name}.{column.name}` AS `{alias}` ({column.display})"
             )
 
     group_by = ""
-    if medidas:
+    if measures:
         group_by = (
             "\nAplique GROUP BY por TODAS as colunas de dimensão listadas acima "
             "(todas exceto as medidas SUM). As medidas nunca saem cruas: use "
@@ -318,15 +318,15 @@ def build_campos_solicitados_block(domain: str, desired_fields: str) -> str:
 # Catálogo sob demanda: índice no prompt, schema de cada tabela pela tool
 # ---------------------------------------------------------------------------
 
-REGRAS_GERAIS = "_regras_gerais.md"
-ENUMS_COMPARTILHADOS = "_enums_compartilhados.md"
+GENERAL_RULES = "_regras_gerais.md"
+SHARED_ENUMS = "_enums_compartilhados.md"
 
 _H3_RE = re.compile(r"^### .+$", re.MULTILINE)
-_COLUNAS_NO_TITULO_RE = re.compile(r"\bcolunas?\b(?P<resto>.*)$", re.IGNORECASE)
+_TITLE_COLUMNS_RE = re.compile(r"\bcolunas?\b(?P<rest>.*)$", re.IGNORECASE)
 
 
-def _ler(nome: str) -> str:
-    return (tabelas_dir() / nome).read_text(encoding="utf-8").strip()
+def _read(name: str) -> str:
+    return (tables_dir() / name).read_text(encoding="utf-8").strip()
 
 
 def build_tables_index() -> str:
@@ -335,46 +335,46 @@ def build_tables_index() -> str:
     É todo o schema que o prompt carrega. Colunas, aliases, partição, filtros
     padrão e enums de cada tabela vêm sob demanda, por `table_doc`.
     """
-    linhas = ["Tabelas consultáveis (o schema de cada uma vem de `get_table_schema`):"]
+    lines = ["Tabelas consultáveis (o schema de cada uma vem de `get_table_schema`):"]
     for domain, paths in extract_tables_by_domain().items():
-        nomes = []
+        names = []
         for path in paths:
             if path == "fintech_companies.companies":
                 continue
             table = find_table(path)
             if table is not None:
-                nomes.append(f"`{table.name}` ({table.title})")
-        if nomes:
-            linhas.append(f"- **{domain}**: " + ", ".join(nomes))
+                names.append(f"`{table.name}` ({table.title})")
+        if names:
+            lines.append(f"- **{domain}**: " + ", ".join(names))
 
     companies = find_table("fintech_companies.companies")
     if companies is not None:
-        linhas.append(
+        lines.append(
             f"- **transversal**: `{companies.name}` ({companies.title}) — nome/CNPJ "
             "da empresa e JOIN de grupo quando a tabela consultada não tiver coluna "
             "de grupo própria."
         )
 
-    return "\n".join(linhas) + "\n\n" + _ler(RELACIONAMENTOS)
+    return "\n".join(lines) + "\n\n" + _read(RELATIONSHIPS)
 
 
-def _enums_compartilhados_para(table: Table) -> list[str]:
+def _shared_enums_for(table: Table) -> list[str]:
     """Blocos de `_enums_compartilhados.md` que valem para as colunas da tabela.
 
     O título de cada bloco cita as colunas (`— colunas `product_key`,
     `product_type``); o bloco vale para toda tabela que tenha alguma delas.
     """
-    conteudo = _ler(ENUMS_COMPARTILHADOS)
-    marcas = list(_H3_RE.finditer(conteudo))
-    blocos = []
-    for indice, marca in enumerate(marcas):
-        fim = marcas[indice + 1].start() if indice + 1 < len(marcas) else len(conteudo)
-        citadas = _COLUNAS_NO_TITULO_RE.search(marca.group(0))
-        colunas = re.findall(r"`([\w.]+)`", citadas.group("resto")) if citadas else []
-        if any(table.has_column(coluna) for coluna in colunas):
+    content = _read(SHARED_ENUMS)
+    marks = list(_H3_RE.finditer(content))
+    blocks = []
+    for index, mark in enumerate(marks):
+        end = marks[index + 1].start() if index + 1 < len(marks) else len(content)
+        cited = _TITLE_COLUMNS_RE.search(mark.group(0))
+        columns = re.findall(r"`([\w.]+)`", cited.group("rest")) if cited else []
+        if any(table.has_column(column) for column in columns):
             # `###` -> `####`: no schema da tabela, fica sob "Valores possíveis".
-            blocos.append("#" + conteudo[marca.start() : fim].strip())
-    return blocos
+            blocks.append("#" + content[mark.start() : end].strip())
+    return blocks
 
 
 def table_doc(reference: str) -> str | None:
@@ -387,26 +387,26 @@ def table_doc(reference: str) -> str | None:
     if table is None:
         return None
 
-    partes = [table_file(table.name).read_text(encoding="utf-8").strip()]
-    compartilhados = _enums_compartilhados_para(table)
-    if compartilhados:
-        partes.append(
+    parts = [table_file(table.name).read_text(encoding="utf-8").strip()]
+    shared = _shared_enums_for(table)
+    if shared:
+        parts.append(
             "### Valores possíveis compartilhados (enums)\n\n"
-            + "\n\n".join(compartilhados)
+            + "\n\n".join(shared)
         )
-    return "\n\n".join(partes)
+    return "\n\n".join(parts)
 
 
-def documentacao_completa() -> str:
+def full_documentation() -> str:
     """Todo o catálogo num texto só, para o gerador de SQL atual (`sql_system.txt`).
 
     Transitório: com o prompt único o agente lê tabela a tabela (`table_doc`), e
     esta função sai junto com o gerador de SQL separado.
     """
-    partes = [_ler(REGRAS_GERAIS)]
-    partes += [
+    parts = [_read(GENERAL_RULES)]
+    parts += [
         table_file(table.name).read_text(encoding="utf-8").strip()
         for table in load_catalog().values()
     ]
-    partes += [_ler(RELACIONAMENTOS), _ler(ENUMS_COMPARTILHADOS)]
-    return "\n\n---\n\n".join(partes)
+    parts += [_read(RELATIONSHIPS), _read(SHARED_ENUMS)]
+    return "\n\n---\n\n".join(parts)

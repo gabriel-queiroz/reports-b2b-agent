@@ -38,9 +38,9 @@ STRUCT = "struct"  # a coluna de grupo está dentro de um STRUCT
 JOIN = "join"  # exige JOIN com outra tabela para chegar ao grupo
 UNSUPPORTED = "unsupported"  # o catálogo não confirma caminho de grupo
 
-_SECTION_RE = re.compile(r"^## (?P<numero>\d+)\.\s+(?P<titulo>.+)$", re.MULTILINE)
+_SECTION_RE = re.compile(r"^## (?P<number>\d+)\.\s+(?P<title>.+)$", re.MULTILINE)
 _LOCAL_RE = re.compile(r"\*\*Local(?:ização)?\*\*:\s*`([^`]+)`")
-_TENANT_LINE_RE = re.compile(r"^\*\*Multi-tenant\*\*:\s*(?P<regra>.+)$", re.MULTILINE)
+_TENANT_LINE_RE = re.compile(r"^\*\*Multi-tenant\*\*:\s*(?P<rule>.+)$", re.MULTILINE)
 
 _UNSUPPORTED_RE = re.compile(
     r"não confirmado|não há coluna de grupo conhecida", re.IGNORECASE
@@ -50,12 +50,12 @@ _STRUCT_RE = re.compile(
 )
 _DIRECT_RE = re.compile(r"coluna direta\s*`([\w.]+)`", re.IGNORECASE)
 _JOIN_RE = re.compile(
-    r"Exige\s*`INNER JOIN\s+(?P<tabela>[\w.]+)\s+\w+\s+ON\s+[^`]+`"
-    r".*?filtro em\s*`\w+\.(?P<coluna>\w+)`",
+    r"Exige\s*`INNER JOIN\s+(?P<table>[\w.]+)\s+\w+\s+ON\s+[^`]+`"
+    r".*?filtro em\s*`\w+\.(?P<column>\w+)`",
     re.IGNORECASE | re.DOTALL,
 )
 
-_ROW_RE = re.compile(r"^\|(?P<celulas>.+)\|\s*$", re.MULTILINE)
+_ROW_RE = re.compile(r"^\|(?P<cells>.+)\|\s*$", re.MULTILINE)
 
 # No `Uso` (6ª célula), a marcação que torna uma coluna de saída não filtrável.
 # Ex.: `Relatórios (não filtrar)` em `employee.name/email/cpf`.
@@ -63,14 +63,14 @@ _NON_FILTERABLE_RE = re.compile(r"não\s+filtr", re.IGNORECASE)
 
 # Subtítulo `###` de uma seção define o agrupamento (nível) das colunas que
 # aparecem abaixo dele. `####` é só rótulo de sub-tabela e não vira grupo.
-_GROUP_RE = re.compile(r"^###\s+(?P<grupo>.+?)\s*$", re.MULTILINE)
+_GROUP_RE = re.compile(r"^###\s+(?P<group>.+?)\s*$", re.MULTILINE)
 
 # `_relacionamentos.md`: `tabela.coluna ──> tabela.coluna`, sempre com o
 # nome físico das duas pontas. Linhas terminadas em `(grupo corporativo)` são
 # nota de multi-tenant, não relacionamento entre tabelas.
 _RELATIONSHIP_RE = re.compile(
-    r"^(?P<esq_tabela>\w+)\.(?P<esq_coluna>[\w.]+)\s*──>\s*"
-    r"(?P<dir_tabela>\w+)\.(?P<dir_coluna>[\w.]+)\s*$",
+    r"^(?P<left_table>\w+)\.(?P<left_column>[\w.]+)\s*──>\s*"
+    r"(?P<right_table>\w+)\.(?P<right_column>[\w.]+)\s*$",
     re.MULTILINE,
 )
 
@@ -141,18 +141,18 @@ class Table:
 # marca. É o que separa, num domínio multi-nível, o nível principal (empresa) do
 # nível de item/detalhe — mesmo grupo que o `list_fields` expõe ao usuário. Vive
 # aqui (fonte única) porque `schema_extractor` e `sql_guard` precisam concordar.
-_DETALHE_GRUPO_RE = re.compile(r"granularidade de colaborador", re.IGNORECASE)
+_DETAIL_GROUP_RE = re.compile(r"granularidade de colaborador", re.IGNORECASE)
 
 
-def is_detalhe_column(column: Column) -> bool:
+def is_detail_column(column: Column) -> bool:
     """A coluna pertence ao nível de detalhe (colaborador), não ao nível empresa."""
-    return bool(column.group) and bool(_DETALHE_GRUPO_RE.search(column.group))
+    return bool(column.group) and bool(_DETAIL_GROUP_RE.search(column.group))
 
 
-RELACIONAMENTOS = "_relacionamentos.md"
+RELATIONSHIPS = "_relacionamentos.md"
 
 
-def tabelas_dir() -> Path:
+def tables_dir() -> Path:
     """Pasta do catálogo: um `<tabela>.md` por tabela + arquivos de apoio `_*.md`."""
     return Path(__file__).parent / "data" / "tabelas"
 
@@ -160,15 +160,15 @@ def tabelas_dir() -> Path:
 def table_files() -> list[Path]:
     """Arquivos de tabela da pasta — tudo que não começa com `_`."""
     return sorted(
-        arquivo
-        for arquivo in tabelas_dir().glob("*.md")
-        if not arquivo.name.startswith("_")
+        file
+        for file in tables_dir().glob("*.md")
+        if not file.name.startswith("_")
     )
 
 
 def table_file(name: str) -> Path:
     """Arquivo de uma tabela: `data/tabelas/<nome físico>.md`."""
-    return tabelas_dir() / f"{name}.md"
+    return tables_dir() / f"{name}.md"
 
 
 @lru_cache(maxsize=1)
@@ -182,18 +182,18 @@ def load_catalog() -> dict[str, Table]:
 
     O resultado é memoizado: o catálogo não muda em runtime.
     """
-    secoes: list[tuple[int, dict[str, Table]]] = []
-    for arquivo in table_files():
-        conteudo = arquivo.read_text(encoding="utf-8")
-        titulo = _SECTION_RE.search(conteudo)
-        if titulo is None:
+    sections: list[tuple[int, dict[str, Table]]] = []
+    for file in table_files():
+        content = file.read_text(encoding="utf-8")
+        title = _SECTION_RE.search(content)
+        if title is None:
             continue
-        secoes.append((int(titulo.group("numero")), _parse_catalog(conteudo)))
+        sections.append((int(title.group("number")), _parse_catalog(content)))
 
-    catalogo: dict[str, Table] = {}
-    for _, tabelas in sorted(secoes, key=lambda item: item[0]):
-        catalogo.update(tabelas)
-    return catalogo
+    catalog_tables: dict[str, Table] = {}
+    for _, tables in sorted(sections, key=lambda item: item[0]):
+        catalog_tables.update(tables)
+    return catalog_tables
 
 
 @lru_cache(maxsize=1)
@@ -218,12 +218,12 @@ def relationships() -> frozenset[frozenset[tuple[str, str]]]:
     É o que permite dizer que um `ON` liga as tabelas por onde o catálogo manda
     ligar — e não por uma coluna inventada.
     """
-    content = (tabelas_dir() / RELACIONAMENTOS).read_text(encoding="utf-8")
+    content = (tables_dir() / RELATIONSHIPS).read_text(encoding="utf-8")
     return frozenset(
         frozenset(
             {
-                (match.group("esq_tabela"), match.group("esq_coluna")),
-                (match.group("dir_tabela"), match.group("dir_coluna")),
+                (match.group("left_table"), match.group("left_column")),
+                (match.group("right_table"), match.group("right_column")),
             }
         )
         for match in _RELATIONSHIP_RE.finditer(content)
@@ -241,14 +241,14 @@ def declared_joins_between(first: str, second: str) -> list[str]:
     A ordem segue a dos argumentos, para o erro sair na mesma ordem em que as
     tabelas aparecem na query.
     """
-    ligacoes = []
-    for par in relationships():
-        if {tabela for tabela, _ in par} != {first, second}:
+    links = []
+    for pair in relationships():
+        if {table for table, _ in pair} != {first, second}:
             continue
-        esquerda = next(ponta for ponta in par if ponta[0] == first)
-        direita = next(ponta for ponta in par if ponta[0] == second)
-        ligacoes.append(f"{esquerda[0]}.{esquerda[1]} = {direita[0]}.{direita[1]}")
-    return sorted(ligacoes)
+        left = next(endpoint for endpoint in pair if endpoint[0] == first)
+        right = next(endpoint for endpoint in pair if endpoint[0] == second)
+        links.append(f"{left[0]}.{left[1]} = {right[0]}.{right[1]}")
+    return sorted(links)
 
 
 def find_table(reference: str) -> Table | None:
@@ -298,7 +298,7 @@ def _iter_sections(content: str):
     matches = list(_SECTION_RE.finditer(content))
     for index, match in enumerate(matches):
         end = matches[index + 1].start() if index + 1 < len(matches) else len(content)
-        yield match.group("titulo").strip(), content[match.end() : end]
+        yield match.group("title").strip(), content[match.end() : end]
 
 
 def _parse_tenant_rule(section: str) -> TenantRule:
@@ -311,25 +311,25 @@ def _parse_tenant_rule(section: str) -> TenantRule:
     if not line:
         return TenantRule(UNSUPPORTED)
 
-    regra = line.group("regra")
+    rule = line.group("rule")
 
-    if _UNSUPPORTED_RE.search(regra):
+    if _UNSUPPORTED_RE.search(rule):
         return TenantRule(UNSUPPORTED)
 
-    struct = _STRUCT_RE.search(regra)
+    struct = _STRUCT_RE.search(rule)
     if struct:
         return TenantRule(STRUCT, column=struct.group(1))
 
-    direct = _DIRECT_RE.search(regra)
+    direct = _DIRECT_RE.search(rule)
     if direct:
         return TenantRule(DIRECT, column=direct.group(1))
 
-    join = _JOIN_RE.search(regra)
+    join = _JOIN_RE.search(rule)
     if join:
         return TenantRule(
             JOIN,
-            join_table=join.group("tabela").split(".")[-1],
-            join_column=join.group("coluna"),
+            join_table=join.group("table").split(".")[-1],
+            join_column=join.group("column"),
         )
 
     return TenantRule(UNSUPPORTED)
@@ -347,7 +347,7 @@ def _parse_columns(section: str):
     group: str | None = None
 
     tokens = [
-        (m.start(), m.group("grupo").strip()) for m in _GROUP_RE.finditer(section)
+        (m.start(), m.group("group").strip()) for m in _GROUP_RE.finditer(section)
     ]
     tokens += [(m.start(), m) for m in _ROW_RE.finditer(section)]
     tokens.sort(key=lambda item: item[0])
@@ -358,7 +358,7 @@ def _parse_columns(section: str):
             continue
 
         row = payload
-        cells = [cell.strip() for cell in row.group("celulas").split("|")]
+        cells = [cell.strip() for cell in row.group("cells").split("|")]
         if len(cells) < 4:
             continue
 

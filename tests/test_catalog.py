@@ -20,7 +20,7 @@ from domain.agents.reports_b2b.catalog import (
 from domain.agents.reports_b2b.schema_extractor import extract_tables_by_domain
 
 # (tabela, estratégia, coluna de grupo, tabela de apoio)
-REGRAS_ESPERADAS = [
+EXPECTED_RULES = [
     ("employee", JOIN, "company_group_id", "companies"),
     ("ifood_benefits_recharges", STRUCT, "company_group.id", None),
     ("receivable_assets", DIRECT, "company_group_id", None),
@@ -33,112 +33,112 @@ REGRAS_ESPERADAS = [
 ]
 
 
-@pytest.mark.parametrize("nome,estrategia,coluna,apoio", REGRAS_ESPERADAS)
-def test_regra_multi_tenant_de_cada_tabela(nome, estrategia, coluna, apoio):
-    regra = load_catalog()[nome].tenant
+@pytest.mark.parametrize("name,strategy,column,support", EXPECTED_RULES)
+def test_multi_tenant_rule_of_each_table(name, strategy, column, support):
+    rule = load_catalog()[name].tenant
 
-    assert regra.strategy == estrategia
-    if estrategia == JOIN:
-        assert regra.join_table == apoio
-        assert regra.join_column == coluna
+    assert rule.strategy == strategy
+    if strategy == JOIN:
+        assert rule.join_table == support
+        assert rule.join_column == column
     else:
-        assert regra.column == coluna
+        assert rule.column == column
 
 
-def test_allowlist_exclui_apenas_o_que_o_catalogo_nao_confirma():
+def test_allowlist_excludes_only_what_catalog_does_not_confirm():
     assert set(allowed_tables()) == {
-        nome for nome, estrategia, _, _ in REGRAS_ESPERADAS if estrategia != UNSUPPORTED
+        name for name, strategy, _, _ in EXPECTED_RULES if strategy != UNSUPPORTED
     }
 
 
-def test_caminho_completo_de_cada_tabela():
-    caminhos = {nome: tabela.path for nome, tabela in load_catalog().items()}
+def test_full_path_of_each_table():
+    table_paths = {name: table.path for name, table in load_catalog().items()}
 
-    assert caminhos["employee"] == "main.ifoodoffice_management_silver.employee"
-    assert caminhos["companies"] == "fintech_companies.companies"
-    assert caminhos["chargeback"] == ("main.ifoodoffice_recharge_chargeback.chargeback")
+    assert table_paths["employee"] == "main.ifoodoffice_management_silver.employee"
+    assert table_paths["companies"] == "fintech_companies.companies"
+    assert table_paths["chargeback"] == ("main.ifoodoffice_recharge_chargeback.chargeback")
 
 
-def test_colunas_e_aliases_sao_lidos():
+def test_columns_and_aliases_are_read():
     chargeback = load_catalog()["chargeback"]
 
     assert "group_id" in chargeback.column_names
     assert "id_estorno" in chargeback.aliases
 
-    recargas = load_catalog()["ifood_benefits_recharges"]
+    recharges = load_catalog()["ifood_benefits_recharges"]
     # os campos de STRUCT entram com o caminho completo
-    assert "company_group.id" in recargas.column_names
-    assert "order_info.payment_method" in recargas.column_names
+    assert "company_group.id" in recharges.column_names
+    assert "order_info.payment_method" in recharges.column_names
 
 
-def test_employee_person_id_e_filtro_unico():
+def test_employee_person_id_is_unique_filter():
     employee = load_catalog()["employee"]
 
-    colunas = {coluna.name: coluna for coluna in employee.columns}
-    assert "person_id" in colunas
-    assert colunas["person_id"].filterable is True
-    assert colunas["person_id"].display == ""
+    columns = {column.name: column for column in employee.columns}
+    assert "person_id" in columns
+    assert columns["person_id"].filterable is True
+    assert columns["person_id"].display == ""
 
-    for nome in ("name", "email", "cpf"):
-        assert colunas[nome].filterable is False
-        assert colunas[nome].display
+    for name in ("name", "email", "cpf"):
+        assert columns[name].filterable is False
+        assert columns[name].display
 
 
-def test_recargas_colunas_carregam_nivel():
-    recargas = load_catalog()["ifood_benefits_recharges"]
+def test_recharges_columns_carry_level():
+    recharges = load_catalog()["ifood_benefits_recharges"]
 
-    por_grupo: dict[str, set[str]] = {}
-    for coluna in recargas.columns:
-        por_grupo.setdefault(coluna.group, set()).add(coluna.name)
+    by_group: dict[str, set[str]] = {}
+    for column in recharges.columns:
+        by_group.setdefault(column.group, set()).add(column.name)
 
-    assert "Recarga (granularidade de empresa)" in por_grupo
-    assert "Detalhes da Recarga (granularidade de colaborador)" in por_grupo
-    assert "Técnico / Partição" in por_grupo
+    assert "Recarga (granularidade de empresa)" in by_group
+    assert "Detalhes da Recarga (granularidade de colaborador)" in by_group
+    assert "Técnico / Partição" in by_group
 
-    assert "order_id" in por_grupo["Recarga (granularidade de empresa)"]
+    assert "order_id" in by_group["Recarga (granularidade de empresa)"]
     assert (
-        "order_info.payment_method" in por_grupo["Recarga (granularidade de empresa)"]
+        "order_info.payment_method" in by_group["Recarga (granularidade de empresa)"]
     )
-    assert "amount" in por_grupo["Detalhes da Recarga (granularidade de colaborador)"]
+    assert "amount" in by_group["Detalhes da Recarga (granularidade de colaborador)"]
     assert (
-        "company.id" in por_grupo["Detalhes da Recarga (granularidade de colaborador)"]
+        "company.id" in by_group["Detalhes da Recarga (granularidade de colaborador)"]
     )
-    assert "update_month" in por_grupo["Técnico / Partição"]
+    assert "update_month" in by_group["Técnico / Partição"]
 
 
-def test_estorno_colunas_carregam_nivel():
+def test_chargeback_columns_carry_level():
     chargeback = load_catalog()["chargeback"]
     chargeback_employee = load_catalog()["chargeback_employee"]
 
-    por_grupo_chargeback: dict[str, set[str]] = {}
-    for coluna in chargeback.columns:
-        por_grupo_chargeback.setdefault(coluna.group, set()).add(coluna.name)
+    by_group_chargeback: dict[str, set[str]] = {}
+    for column in chargeback.columns:
+        by_group_chargeback.setdefault(column.group, set()).add(column.name)
 
-    por_grupo_employee: dict[str, set[str]] = {}
-    for coluna in chargeback_employee.columns:
-        por_grupo_employee.setdefault(coluna.group, set()).add(coluna.name)
+    by_group_employee: dict[str, set[str]] = {}
+    for column in chargeback_employee.columns:
+        by_group_employee.setdefault(column.group, set()).add(column.name)
 
-    assert "Estorno (granularidade de empresa)" in por_grupo_chargeback
+    assert "Estorno (granularidade de empresa)" in by_group_chargeback
     assert (
-        "Estorno por Colaborador (granularidade de colaborador)" in por_grupo_employee
+        "Estorno por Colaborador (granularidade de colaborador)" in by_group_employee
     )
 
-    assert "id" in por_grupo_chargeback["Estorno (granularidade de empresa)"]
+    assert "id" in by_group_chargeback["Estorno (granularidade de empresa)"]
     assert (
         "total_amount_requested"
-        in por_grupo_chargeback["Estorno (granularidade de empresa)"]
+        in by_group_chargeback["Estorno (granularidade de empresa)"]
     )
     assert (
         "employee_id"
-        in por_grupo_employee["Estorno por Colaborador (granularidade de colaborador)"]
+        in by_group_employee["Estorno por Colaborador (granularidade de colaborador)"]
     )
     assert (
         "reason"
-        in por_grupo_employee["Estorno por Colaborador (granularidade de colaborador)"]
+        in by_group_employee["Estorno por Colaborador (granularidade de colaborador)"]
     )
 
 
-def test_resolucao_de_referencia_por_sufixo():
+def test_reference_resolution_by_suffix():
     assert find_table("main.ifoodoffice_management_silver.employee").name == "employee"
     assert find_table("employee").name == "employee"
     assert find_table("fintech_companies.companies").name == "companies"
@@ -147,24 +147,24 @@ def test_resolucao_de_referencia_por_sufixo():
     assert find_table("") is None
 
 
-def test_dominios_do_prompt_continuam_saindo_do_mesmo_catalogo():
+def test_prompt_domains_still_come_from_same_catalog():
     """`schema_extractor` e `catalog` leem o mesmo arquivo — e concordam."""
-    por_dominio = extract_tables_by_domain()
+    by_domain = extract_tables_by_domain()
 
-    assert por_dominio["colaboradores"] == [
+    assert by_domain["colaboradores"] == [
         "main.ifoodoffice_management_silver.employee",
         "fintech_companies.companies",
     ]
-    assert por_dominio["recargas"] == [
+    assert by_domain["recargas"] == [
         "main.fintech_finance.ifood_benefits_recharges",
         "fintech_companies.companies",
     ]
-    assert por_dominio["estorno_recarga"] == [
+    assert by_domain["estorno_recarga"] == [
         "main.ifoodoffice_recharge_chargeback.chargeback",
         "main.ifoodoffice_recharge_chargeback.chargeback_employee",
         "fintech_companies.companies",
     ]
-    assert set(por_dominio["financeiro"]) == {
+    assert set(by_domain["financeiro"]) == {
         "main.fintech_finance.receivable_assets",
         "main.ifoodoffice_invoice_service.company_tax_invoice",
         "main.ifood_benf_transaction_service.financial_account",

@@ -13,11 +13,11 @@ from domain.agents.base.base_agent import BaseAgent
 from domain.agents.reports_b2b.reports_react_agent.agent import ReportsB2bReactAgent
 from langgraph.types import Command
 
-GRUPO_A = "550e8400-e29b-41d4-a716-446655440000"
-GRUPO_B = "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+GROUP_A = "550e8400-e29b-41d4-a716-446655440000"
+GROUP_B = "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
 
 
-class LoggerMudo:
+class SilentLogger:
     def log_information(self, *_args, **_kwargs):
         pass
 
@@ -26,11 +26,11 @@ class LoggerMudo:
 
 
 @pytest.fixture
-def agente(provider):
-    return ReportsB2bReactAgent(logger=LoggerMudo(), genplat_provider=provider)
+def agent(provider):
+    return ReportsB2bReactAgent(logger=SilentLogger(), genplat_provider=provider)
 
 
-def sessao(group_id, user_id="u-1"):
+def session(group_id, user_id="u-1"):
     return {
         "message": "colaboradores ativos",
         "user_id": user_id,
@@ -39,24 +39,24 @@ def sessao(group_id, user_id="u-1"):
     }
 
 
-def test_prompt_usa_o_group_id_do_state_recebido(agente):
-    prompt_a = agente._build_system_prompt(sessao(GRUPO_A))
-    prompt_b = agente._build_system_prompt(sessao(GRUPO_B))
+def test_prompt_uses_group_id_from_received_state(agent):
+    prompt_a = agent._build_system_prompt(session(GROUP_A))
+    prompt_b = agent._build_system_prompt(session(GROUP_B))
 
-    assert GRUPO_A in prompt_a and GRUPO_B not in prompt_a
-    assert GRUPO_B in prompt_b and GRUPO_A not in prompt_b
+    assert GROUP_A in prompt_a and GROUP_B not in prompt_a
+    assert GROUP_B in prompt_b and GROUP_A not in prompt_b
 
 
-def test_agente_nao_guarda_tenant_na_instancia(agente):
+def test_agent_does_not_keep_tenant_on_instance(agent):
     """O atributo de instância era o mecanismo do vazamento."""
-    assert not hasattr(agente, "group_id")
-    assert not hasattr(agente, "user_id")
+    assert not hasattr(agent, "group_id")
+    assert not hasattr(agent, "user_id")
 
 
-def test_duas_sessoes_concorrentes_nao_trocam_de_grupo(agente, monkeypatch):
+def test_two_concurrent_sessions_do_not_swap_groups(agent, monkeypatch):
     """Com `self.group_id`, a sessão que chega depois vencia as duas."""
 
-    async def loop_falso(self, state):
+    async def fake_loop(self, state):
         # devolve o controle ao event loop no meio do turno: é aqui que a
         # outra sessão entrava e sobrescrevia o tenant
         await asyncio.sleep(0.01)
@@ -65,40 +65,40 @@ def test_duas_sessoes_concorrentes_nao_trocam_de_grupo(agente, monkeypatch):
             update={"response": self._build_system_prompt(state)},
         )
 
-    monkeypatch.setattr(BaseAgent, "__call__", loop_falso)
+    monkeypatch.setattr(BaseAgent, "__call__", fake_loop)
 
-    async def rodar():
+    async def run_agent():
         return await asyncio.gather(
-            agente(sessao(GRUPO_A, "u-a")),
-            agente(sessao(GRUPO_B, "u-b")),
+            agent(session(GROUP_A, "u-a")),
+            agent(session(GROUP_B, "u-b")),
         )
 
-    comando_a, comando_b = asyncio.run(rodar())
+    command_a, command_b = asyncio.run(run_agent())
 
-    assert GRUPO_A in comando_a.update["response"]
-    assert GRUPO_B not in comando_a.update["response"]
-    assert GRUPO_B in comando_b.update["response"]
-    assert GRUPO_A not in comando_b.update["response"]
+    assert GROUP_A in command_a.update["response"]
+    assert GROUP_B not in command_a.update["response"]
+    assert GROUP_B in command_b.update["response"]
+    assert GROUP_A not in command_b.update["response"]
 
 
-def test_group_id_chega_canonico_ao_prompt(agente, monkeypatch):
+def test_group_id_reaches_prompt_canonical(agent, monkeypatch):
     """O `__call__` normaliza o UUID e é a forma normalizada que segue no state."""
 
-    async def loop_falso(self, state):
+    async def fake_loop(self, state):
         return Command(
             goto="__end__",
             update={"response": self._build_system_prompt(state)},
         )
 
-    monkeypatch.setattr(BaseAgent, "__call__", loop_falso)
+    monkeypatch.setattr(BaseAgent, "__call__", fake_loop)
 
-    comando = asyncio.run(agente(sessao(GRUPO_A.upper())))
+    command = asyncio.run(agent(session(GROUP_A.upper())))
 
-    assert GRUPO_A in comando.update["response"]
-    assert GRUPO_A.upper() not in comando.update["response"]
+    assert GROUP_A in command.update["response"]
+    assert GROUP_A.upper() not in command.update["response"]
 
 
-def test_prompt_descreve_a_tool_como_ela_e():
+def test_prompt_describes_tool_as_it_is():
     """O prompt mandava chamar `execute_query(pergunta=, dominio=, group_id=…)`.
 
     Nenhum desses parâmetros existe no schema — o modelo era instruído a chamar
@@ -107,27 +107,27 @@ def test_prompt_descreve_a_tool_como_ela_e():
     from domain.agents.reports_b2b.report_generator.prompts import agent_system_prompt
     from domain.agents.reports_b2b.tools.execute_query import ExecuteQueryInput
 
-    prompt = agent_system_prompt(dominios="qualquer", group_id=GRUPO_A)
-    parametros = set(ExecuteQueryInput.model_fields)
+    prompt = agent_system_prompt(domains="qualquer", group_id=GROUP_A)
+    params = set(ExecuteQueryInput.model_fields)
 
-    assert parametros == {"question", "domain", "desired_fields"}
-    for parametro in parametros:
-        assert f"{parametro}=" in prompt
+    assert params == {"question", "domain", "desired_fields"}
+    for param in params:
+        assert f"{param}=" in prompt
 
-    for inexistente in ("pergunta=", "dominio=", "campos_desejados=", "group_id="):
-        assert inexistente not in prompt
+    for missing in ("pergunta=", "dominio=", "campos_desejados=", "group_id="):
+        assert missing not in prompt
 
 
-def test_sessao_sem_tenant_valido_nao_entra_no_loop(agente, monkeypatch):
-    chamou = []
+def test_session_without_valid_tenant_does_not_enter_loop(agent, monkeypatch):
+    called = []
 
-    async def loop_falso(self, state):  # pragma: no cover - não deve rodar
-        chamou.append(state)
+    async def fake_loop(self, state):  # pragma: no cover - não deve rodar
+        called.append(state)
         return Command(goto="__end__", update={})
 
-    monkeypatch.setattr(BaseAgent, "__call__", loop_falso)
+    monkeypatch.setattr(BaseAgent, "__call__", fake_loop)
 
-    comando = asyncio.run(agente(sessao("nao-e-uuid")))
+    command = asyncio.run(agent(session("nao-e-uuid")))
 
-    assert chamou == []
-    assert comando.update["fallback_used"] is True
+    assert called == []
+    assert command.update["fallback_used"] is True

@@ -22,8 +22,8 @@ from domain.agents.reports_b2b.report_generator.prompts import (
     sql_user_prompt,
 )
 from domain.agents.reports_b2b.schema_extractor import (
-    build_campos_solicitados_block,
-    documentacao_completa,
+    build_requested_fields_block,
+    full_documentation,
     get_all_tables_for_sql_generation,
 )
 from domain.agents.reports_b2b.sql_guard import SqlGuardError, guard_query
@@ -53,7 +53,7 @@ class GeneratedQuery(BaseModel):
 _llm_instance: ChatOpenAI | None = None
 _genplat_provider: GenplatProvider | None = None
 _schema_content: str | None = None
-_tabelas_doc: str | None = None
+_tables_doc: str | None = None
 
 
 def _initialize_llm(genplat_provider: GenplatProvider) -> ChatOpenAI:
@@ -101,16 +101,16 @@ def _load_schema() -> str:
     """
     global _schema_content
     if _schema_content is None:
-        _schema_content = documentacao_completa()
+        _schema_content = full_documentation()
     return _schema_content
 
 
 def _load_tables_doc() -> str:
     """Documentação das tabelas para o prompt de SQL (o catálogo inteiro)."""
-    global _tabelas_doc
-    if _tabelas_doc is None:
-        _tabelas_doc = _load_schema()
-    return _tabelas_doc
+    global _tables_doc
+    if _tables_doc is None:
+        _tables_doc = _load_schema()
+    return _tables_doc
 
 
 async def _generate_sql_internal(
@@ -172,7 +172,7 @@ async def _generate_sql_internal(
 
     # `desired_fields` vira um bloco rígido no prompt: sem ele, o LLM decidia as
     # colunas sozinho e ignorava o que o usuário tinha confirmado na conversa.
-    campos_solicitados = build_campos_solicitados_block(domain, desired_fields)
+    requested_fields = build_requested_fields_block(domain, desired_fields)
 
     # Load documentation
     tables_doc = _load_tables_doc()
@@ -193,17 +193,17 @@ async def _generate_sql_internal(
 
     # Create prompts for SQL generation
     sql_system = sql_system_prompt(
-        restricao_group_id=group_id_restriction,
-        documentacao_tabelas=tables_doc,
+        group_id_restriction=group_id_restriction,
+        tables_documentation=tables_doc,
         group_id=group_id,
     )
     sql_user = sql_user_prompt(
-        dominio=domain,
-        tabelas=tables,
-        pergunta=question,
+        domain=domain,
+        tables=tables,
+        question=question,
         group_id=group_id,
-        campos_solicitados=campos_solicitados,
-        exemplos=few_shot(),
+        requested_fields=requested_fields,
+        examples=few_shot(),
     )
 
     # Initialize LLM
