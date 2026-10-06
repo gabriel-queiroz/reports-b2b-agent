@@ -30,4 +30,4 @@ scripts/migrate_to_main.sh            # simulação
 scripts/migrate_to_main.sh --apply    # copia
 ```
 
-Os caminhos padrão podem ser trocados com `SOURCE=... DEST=...`.
+Os caminhos padrão podem ser trocados com `SOURCE=... DEST=...`. Para o Claude Code fazer a migração inteira (branch, cópia, ajustes e testes), use o prompt em `scripts/migrate_to_main.prompt.md`.

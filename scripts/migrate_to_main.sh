@@ -36,6 +36,7 @@ EXCLUDES=(
   --exclude=README.md
   --exclude=requirements-dev.txt
   --exclude=scripts/migrate_to_main.sh
+  --exclude=scripts/migrate_to_main.prompt.md
   --exclude=__pycache__/
   --exclude=.pytest_cache/
   --exclude=.venv/
